@@ -105,29 +105,37 @@ $(document).ready(function () {
      Events
   =============================== */
 
-  $(document).on('click', '.updateImg', function () {
-    if (!token) return;
+ $(document).on('click', '.updateImg', function () {
+  if (!token) return;
 
-    createUploadDom();
+  createUploadDom();
 
-    let imgName = "default";
+  const fileInput = $("#image-upload")[0];
+  if (!fileInput) {
+    console.error("File input was not created!");
+    return;
+  }
 
-    if ($(this).attr("src")) {
-      imgName = $(this).attr("src");
-    } else {
-      const bgImg = $(this).css('background-image');
-      if (bgImg && bgImg.includes('url(')) {
-        imgName = bgImg.replace(/^url\(["']?/, '').replace(/["']?\)$/, '');
-      }
+  let imgName = "default";
+
+  if ($(this).attr("src")) {
+    imgName = $(this).attr("src");
+  } else {
+    const bgImg = $(this).css('background-image');
+    if (bgImg && bgImg.includes('url(')) {
+      imgName = bgImg.replace(/^url\(["']?/, '').replace(/["']?\)$/, '');
     }
+  }
 
-    if (imgName.includes("?")) imgName = imgName.split("?")[0];
+  if (imgName.includes("?")) imgName = imgName.split("?")[0];
 
-    $(".formFieldFileName").val(imgName);
-    $("#image-upload").data('imageElement', this);
+  $(".formFieldFileName").val(imgName);
+  $(fileInput).data('imageElement', this);
 
-    $("#image-upload")[0].click();
-  });
+  //  Safe click
+  fileInput.click();
+});
+
 
   /* ===============================
      Upload logic
