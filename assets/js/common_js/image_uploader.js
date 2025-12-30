@@ -1,10 +1,16 @@
-
-
-const token = localStorage.getItem('feature_key');
-const repoOwner = localStorage.getItem('owner');
-const repoName = localStorage.getItem('repo_name');
+// ================= CONFIG =================
+const token = localStorage.getItem("feature_key");
+const repoOwner = localStorage.getItem("owner");
+const repoName = localStorage.getItem("repo_name");
 const branch = "main";
 
+// ================= SAFETY CHECK =================
+if (!token || !repoOwner || !repoName) {
+  alert("Missing GitHub configuration in localStorage");
+  throw new Error("Missing GitHub config");
+}
+
+// ================= HELPERS =================
 function toBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -19,115 +25,118 @@ async function getLatestSha(filePath) {
     const res = await fetch(
       `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${filePath}?ref=${branch}`,
       {
-        headers: { Authorization: `token ${token}`, Accept: "application/vnd.github+json" }
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github+json"
+        }
       }
     );
-    if (res.ok) return (await res.json()).sha;
-  } catch {
-    console.warn("Could not fetch latest SHA for", filePath);
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.sha;
+  } catch (err) {
+    console.warn("Could not fetch SHA:", err);
+    return null;
   }
-  return null;
 }
 
-function extractRepoPath(imgSrc) {
-  // Ensure we always end up with: "assets/images/filename.ext"
-  return imgSrc
-    .replace(/^https?:\/\/[^/]+\//, '')   // remove domain (e.g., https://domain.com/)
-    .replace(/^testing\//, '')            // remove any "testing/" prefix if present
-    .replace(/^\/+/, '')                  // remove leading slashes
-    .replace(/^.*?(assets\/)/, 'assets/'); // trim everything before "assets/"
+function extractRepoPath(src) {
+  if (!src) return null;
+
+  return src
+    .replace(/^url\(["']?/, "")
+    .replace(/["']?\)$/, "")
+    .replace(/^https?:\/\/[^/]+\//, "")
+    .replace(/^\/+/, "")
+    .replace(/^.*?(assets\/)/, "assets/");
 }
 
-$(document).on('click', '.updateImg', function () {
-    if (localStorage.getItem("featureEnabled")==="load buttons"){
-        let imgName = "default";
-        if ($(this).attr("src")) {
-            imgName = $(this).attr("src");
-        } else {
-            const bgImg = $(this).css('background-image');
-            if (bgImg && bgImg.includes('url(')) {
-            imgName = bgImg.replace(/^url\(["']?/, '').replace(/["']?\)$/, '');
-            }
-        }
+// ================= CLICK HANDLER =================
+$(document).on("click", ".updateImg", function () {
+  if (localStorage.getItem("featureEnabled") !== "load buttons") return;
 
-        if (imgName.includes("?")) imgName = imgName.split("?")[0];
+  let imgSrc = "";
 
-        $(".formFieldFileName").val(imgName);
-        $("#image-upload").data('imageElement', this);
-        $("#image-upload").click();
+  if (this.tagName === "IMG") {
+    imgSrc = $(this).attr("src");
+  } else {
+    const bg = $(this).css("background-image");
+    if (bg && bg.includes("url(")) {
+      imgSrc = bg.replace(/^url\(["']?/, "").replace(/["']?\)$/, "");
     }
-    else{
-        return
-    }
-        
+  }
+
+  if (!imgSrc) return alert("Image source not found");
+
+  imgSrc = imgSrc.split("?")[0];
+
+  $(".formFieldFileName").val(imgSrc);
+  $("#image-upload").data("imageElement", this);
+  $("#image-upload").click();
 });
-    $("#image-upload").on('change', function () {
-        uploadImgData();
 
-    });
+// ================= FILE CHANGE =================
+$("#image-upload").on("change", uploadImgData);
 
+// ================= UPLOAD FUNCTION =================
+async function uploadImgData() {
+  const fileInput = $("#image-upload")[0];
+  const file = fileInput.files[0];
+  if (!file) return alert("No file selected");
 
-    async function uploadImgData() {
-        const fileInput = $("#image-upload")[0];
-        const file = fileInput.files[0];
-        if (!file) return alert("No file selected!");
+  const imgName = $(".formFieldFileName").val();
+  const element = $("#image-upload").data("imageElement");
 
-        const imgName = $(".formFieldFileName").val();
-        alert('imgName: '+ imgName)
-        const element = $("#image-upload").data("imageElement");
+  const repoImagePath = extractRepoPath(imgName);
 
-        // Convert to base64
-        const base64 = await toBase64(file);
-        const repoImagePath = extractRepoPath(imgName);
-        alert('repoImagePath: '+ repoImagePath)
+  console.log("Image src:", imgName);
+  console.log("Repo path:", repoImagePath);
 
-        if (!repoImagePath) {
-            alert(" Unable to determine GitHub path for image!");
-            return;
-        }
+  if (!repoImagePath) {
+    alert("Unable to determine GitHub image path");
+    return;
+  }
 
-        // Get latest SHA from GitHub
-        const sha = await getLatestSha(repoImagePath);
-        const commitMessage = `Update ${repoImagePath} via web editor`;
+  const base64 = await toBase64(file);
+  const sha = await getLatestSha(repoImagePath);
 
-        // Upload to GitHub
-        const response = await fetch(
-            `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${repoImagePath}`,
-            {
-            method: "PUT",
-            headers: {
-                Authorization: `token ${token}`,
-                Accept: "application/vnd.github+json",
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                message: commitMessage,
-                content: base64.split(",")[1],
-                sha: sha,
-                branch: branch,
-            }),
-            }
-        );
+  const response = await fetch(
+    `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${repoImagePath}`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        message: `Update ${repoImagePath} via web editor`,
+        content: base64.split(",")[1],
+        sha: sha,
+        branch: branch
+      })
+    }
+  );
 
-        const result = await response.json();
+  const result = await response.json();
 
-        if (result.content && result.commit) {
-            console.log(" GitHub image updated:", repoImagePath);
+  if (!response.ok) {
+    console.error("GitHub error:", result);
+    alert(`Upload failed: ${result.message}`);
+    return;
+  }
 
-            // Fetch the latest file (optional: add ?t=timestamp to bust cache)
-            const newSrc = `${imgName}?${Date.now()}`;
-            if (element.tagName === "IMG") {
-            $(element).attr("src", newSrc);
-            } else {
-            $(element).css("background-image", `url(${newSrc})`);
-            }
+  // ================= UPDATE UI =================
+  const newSrc = `${imgName}?t=${Date.now()}`;
 
-            alert(" Image updated on GitHub!");
-        } else {
-            alert(" Upload failed: " + (result.message || "Unknown error"));
-        }
+  if (element.tagName === "IMG") {
+    $(element).attr("src", newSrc);
+  } else {
+    $(element).css("background-image", `url(${newSrc})`);
+  }
 
-        // Reset file input
-        fileInput.value = "";
-        }
+  alert("Image successfully updated on GitHub");
 
+  fileInput.value = "";
+}
