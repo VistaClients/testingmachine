@@ -4,7 +4,7 @@ $(document).ready(function () {
     var wrapper = $('#wrapper').addClass('editableSection');
     var topBar = $('<div>', { id: 'top-bar', class: 'top-bar' }).insertBefore(wrapper);
     // var imageUpload = $('<input type="file" id="image-upload" class="hidden" accept="image/*" />').appendTo('body');
-    $('<form method="post" id="imgForm" class="hidden" enctype="multipart/form-data">').appendTo('body');
+    $('<form method="post" id="imgForm" enctype="multipart/form-data">').appendTo('body');
     $('<input type="file" name="imgFile" id="image-upload" class="hidden" accept="image/*">').appendTo('#imgForm');
     $('<input type="text" class="hidden formFieldFileName" name="imgFileName" value="">').appendTo('#imgForm');
     $('<input type="text" class="hidden selectedPageName" name="selectedPageName" value="">').appendTo('body');
@@ -51,8 +51,6 @@ function extractRepoPath(imgSrc) {
     .replace(/^.*?(assets\/)/, 'assets/'); // trim everything before "assets/"
 }
 
-
-
 $(document).on('click', '.updateImg', function () {
   let imgName = "default";
   if ($(this).attr("src")) {
@@ -70,6 +68,7 @@ $(document).on('click', '.updateImg', function () {
   $("#image-upload").data('imageElement', this);
   $("#image-upload").click();
 });
+
     $("#image-upload").on('change', function () {
         uploadImgData();
 
@@ -140,316 +139,9 @@ $(document).on('click', '.updateImg', function () {
         fileInput.value = "";
         }
 
-// for Upload images
-var isEditingContent = false;
-var isEditingImages = false;
 
-
-/* ---------------- COOKIE HELPER ---------------- */
-function getCookie(name) {
-  const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
-  return match ? decodeURIComponent(match[2]) : null;
-}
-
-/* ---------------- URL → FILE ---------------- */
-function urlToFile(url, filename, callback) {
-  const img = new Image();
-  img.crossOrigin = 'Anonymous'; // important for CORS
-  img.onload = function () {
-    const canvas = document.createElement('canvas');
-    canvas.width = img.width;
-    canvas.height = img.height;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(img, 0, 0);
-
-    canvas.toBlob(function (blob) {
-      const file = new File([blob], filename, { type: blob.type });
-      callback(file);
-    }, 'image/jpeg');
-  };
-  img.onerror = function () {
-    alert('Cannot load image from URL. Make sure it allows cross-origin access.');
-  };
-  img.src = url;
-}
-
-function getFileNameFromImgSrc(imgEl) {
-  let src = $(imgEl).attr('src');
-  if (src.includes('?')) src = src.split('?')[0];
-  return src.substring(src.lastIndexOf('/') + 1);
-}
-
-function getBasePathFromImgSrc(imgEl) {
-  let src = $(imgEl).attr('src');
-
-  // remove data urls completely
-  if (src.startsWith('data:')) {
-    return null;
-  }
-
-  // remove query string
-  if (src.includes('?')) {
-    src = src.split('?')[0];
-  }
-
-  // return directory path
-  return src.substring(0, src.lastIndexOf('/') + 1);
-}
-
-/* ---------------- UPLOAD TO DJANGO (NO BACKEND CHANGE) ---------------- */
-function uploadImgData(file, originalEl) {
-
-  const clientName = getCookie('clientName');
-  const clientProjectName = getCookie('clientProjectName');
-
-  if (!clientName || !clientProjectName) {
-    alert("clientName or clientProjectName missing in cookies");
-    return;
-  }
-
-  const form = $('#imgForm')[0];
-  const formData = new FormData(form);
-
-
-const originalFileName = getFileNameFromImgSrc(originalEl);
-
-formData.set('imgFile', file);
-formData.set('imgFileName', originalFileName);
-  formData.set('clientName', clientName);     // COOKIE
-  formData.set('clientProjectName', clientProjectName); // COOKIE
-
-  $.ajax({
-    type: "POST",
-    url: "fuos/",
-    data: formData,
-    processData: false,
-    contentType: false,
-    success: function () {
-
-    const basePath = getBasePathFromImgSrc(originalEl);
-    const fileName = getFileNameFromImgSrc(originalEl);
-
-    if (!basePath || !fileName) {
-        console.error("Invalid image path");
-        return;
-    }
-
-  $(originalEl).attr(
-    'src',
-    basePath + fileName + '?' + Date.now()
-  );
-}
-
-    ,
-    error: function (xhr) {
-      alert("Upload error: " + xhr.responseText);
-    }
-  });
-}
-
-/* ---------------- IMAGE PICKER ---------------- */
-const PEXELS_KEY = "7QPIcP3MfPcDte34Q1Vsu1lPrl0iwWFZ5GOl1NUgcLN40W6zhih4Yv5i";
-let selectedImageSrc = null;
-let selectedFile = null;
-
-function openImagePicker(targetEl) {
-
-  if (!$('#imagePickerModal').length) {
-    $('<div id="imagePickerModal" class="modal image-picker-modal fade"></div>').appendTo('body');
-  }
-
-  $('#imagePickerModal')
-    .data('imageElement', targetEl)
-    .html(`
-    <div class="modal-dialog">
-      <div class="modal-content">
-
-        <div class="modal-header">
-          <button class="close" data-dismiss="modal">&times;</button>
-          <h4>Select Image</h4>
-        </div>
-
-        <div class="modal-body">
-
-          <div class="image-picker-tabs">
-            <button class="tab-btn active" data-tab="assets">Assets</button>
-            <button class="tab-btn" data-tab="pexels">Pexels</button>
-            <button class="tab-btn" data-tab="upload">Upload</button>
-            <button class="tab-btn" data-tab="url">URL</button>
-          </div>
-
-          <div class="tab-content-area"></div>
-
-          <div class="preview-box hidden">
-            <img id="previewImage">
-          </div>
-
-        </div>
-
-        <div class="modal-footer">
-          <button class="btn btn-default" data-dismiss="modal">Cancel</button>
-          <button class="btn website-info-btn-primary" id="confirmImage">Submit</button>
-        </div>
-
-      </div>
-    </div>
-  `).modal('show');
-
-  loadAssets();
-
-  $('.tab-btn').click(function () {
-    $('.tab-btn').removeClass('active');
-    $(this).addClass('active');
-    $('.preview-box').addClass('hidden');
-    selectedImageSrc = null;
-    selectedFile = null;
-
-    const tab = $(this).data('tab');
-    if (tab === 'assets') loadAssets();
-    if (tab === 'pexels') loadPexels();
-    if (tab === 'upload') loadUpload();
-    if (tab === 'url') loadURL();
-  });
-
-  $('#confirmImage').off().on('click', function () {
-    const el = $('#imagePickerModal').data('imageElement');
-
-    if (selectedFile) {
-      uploadImgData(selectedFile, el);
-    }
-    else if (selectedImageSrc) {
-    urlToFile(selectedImageSrc, 'image.jpg', function (file) {
-        uploadImgData(file, el);
-    });
-    }
-    else {
-      alert("Select an image first");
-      return;
-    }
-
-    $('#imagePickerModal').modal('hide');
-  });
-}
-
-/* ---------------- ASSETS ---------------- */
-function loadAssets() {
-  $('.tab-content-area').html(`
-    <div class="image-grid">
-      <img src="assets/images/library/sample-1.jpg">
-      <img src="assets/images/library/sample-2.jpg">
-      <img src="assets/images/library/sample-3.jpg">
-    </div>
-  `);
-
-  $('.image-grid img').click(function () {
-    $('.image-grid img').removeClass('selected');
-    $(this).addClass('selected');
-
-    selectedImageSrc = this.src;
-    selectedFile = null;
-
-    $('#previewImage').attr('src', this.src);
-    $('.preview-box').removeClass('hidden');
-  });
-}
-
-/* ---------------- PEXELS ---------------- */
-function loadPexels() {
-  $('.tab-content-area').html(`
-    <input class="form-control" id="pexelsSearch" placeholder="Search images">
-    <br>
-    <div class="image-grid" id="pexelsResults"></div>
-  `);
-
-  $('#pexelsSearch').keyup(function () {
-    const q = this.value;
-    if (q.length < 3) return;
-
-    $.ajax({
-      url: `https://api.pexels.com/v1/search?query=${q}&per_page=9`,
-      headers: { Authorization: PEXELS_KEY },
-      success: function (res) {
-        let html = '';
-        res.photos.forEach(p => html += `<img src="${p.src.medium}">`);
-        $('#pexelsResults').html(html);
-
-        $('#pexelsResults img').click(function () {
-          $('#pexelsResults img').removeClass('selected');
-          $(this).addClass('selected');
-
-          selectedImageSrc = this.src;
-          selectedFile = null;
-
-          $('#previewImage').attr('src', this.src);
-          $('.preview-box').removeClass('hidden');
-        });
-      }
-    });
-  });
-}
-
-/* ---------------- UPLOAD ---------------- */
-function loadUpload() {
-  $('.tab-content-area').html(`
-    <div class="upload-box">Click to upload</div>
-  `);
-
-  $('.upload-box').click(() => $('#image-upload').click());
-
-  $('#image-upload').off().on('change', function () {
-    const file = this.files[0];
-    if (!file) return;
-
-    selectedFile = file;
-    selectedImageSrc = null;
-
-    $('.formFieldFileName').val(file.name);
-
-    const reader = new FileReader();
-    reader.onload = e => {
-      $('#previewImage').attr('src', e.target.result);
-      $('.preview-box').removeClass('hidden');
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-/* ---------------- URL ---------------- */
-function loadURL() {
-  $('.tab-content-area').html(`
-    <div style="display:flex; gap:10px">
-      <input class="form-control" id="imgUrl" placeholder="Paste image URL">
-      <button class="btn website-info-btn-primary" id="previewUrl">Preview</button>
-    </div>
-  `);
-
-  $('#previewUrl').click(function () {
-    const url = $('#imgUrl').val();
-    if (!url) return;
-
-    selectedImageSrc = url;
-    selectedFile = null;
-
-    $('#previewImage').attr('src', url);
-    $('.preview-box').removeClass('hidden');
-  });
-}
-
-/* ---------------- OPEN PICKER ---------------- */
-$(document).on('click', '.updateImg', function (e) {
-  if (!isEditingContent) return;
-  e.preventDefault();
-  openImagePicker(this);
-});
-
-/* ---------------- CLEANUP ---------------- */
-$(document).on('hidden.bs.modal', '#imagePickerModal', function () {
-  $(this).remove();
-  selectedImageSrc = null;
-  selectedFile = null;
-});
-
-
+    var isEditingContent = false;
+    var isEditingImages = false;
 
     // Create top bar buttons
     var enableEditMode = $('<button id="enable-editmode">Enable Edit Mode</button>').appendTo(topBar);
@@ -588,7 +280,7 @@ $(document).on('hidden.bs.modal', '#imagePickerModal', function () {
         var $aiBotImage = $(this);
         var imagePosition = $aiBotImage.offset();
 
-        var $tooltip = $('<div class="ai-tooltip">Generate Content with AiBot</div>');
+        var $tooltip = $('<div class="ai-tooltip">I am your AiBot</div>');
 
         $('body').append($tooltip);
         $tooltip.css({
@@ -631,104 +323,52 @@ $(document).on('hidden.bs.modal', '#imagePickerModal', function () {
 
 
 
-// SINGLE message listener for all postMessage communications
-window.addEventListener("message", (event) => {
-    if (event.origin !== window.location.origin) return;
-
-    console.log("Parent received message:", event.data, "from origin:", event.origin);
-
-    const { type, payload } = event.data;
-
-    switch (type) {
-        case "MODEL_READY":
-            modelReady = true;
-            console.log("AI Model in iframe is ready");
-            $("#contentTextArea").val("AI Model is ready");
-            break;
-        case "GENERATE_TEXT_RESULT":
-            $("#contentTextArea").val(payload.text);
-            $("#generateContentBtn").prop("disabled", false).text("Generate");
-            break;
-        default:
-            console.warn("Unknown message type:", type);
-    }
-});
-
-// Function to safely post message to iframe
-function sendToIframe(message) {
-
-   const parentOrigin = document.referrer
-        ? new URL(document.referrer).origin
-        : "*";
-
-    window.parent.postMessage(message, parentOrigin);
-}
-
-// Bind click event once after modal is inserted
-$(document).on('click', '#generateContentBtn', async function () {
-    // if (!modelReady) {
-    //     alert("AI model is still loading, please wait...");
-    //     return;
-    // }
-
-    const inputText = $("#topicInput").val().trim();
-    if (!inputText) return;
-
-    $("#contentTextArea").val("Generating...");
-    $(this).prop("disabled", true).text("Generating...");
-
-    sendToIframe({ type: "GENERATE_TEXT", payload: { text: inputText } });
-});
-
-// Modal creation (AI Bot Image)
-$(document).on('click', '.aiBotImage', function () {
-    const parentElement = $(this).closest('p, h1, h2, h3, h4, h5, h6, span');
-    let currentContent = parentElement.contents().filter(function () {
+$(document).on('click', '.aiBotImage', function() {
+    var parentElement = $(this).closest('p, h1, h2, h3, h4, h5, h6, span');
+    var currentContent = parentElement.contents().filter(function() {
         return this.nodeType === 3;
     }).first().text().trim();
+
     currentContent = currentContent.replace(/\s+/g, ' ').trim();
 
-    const modalHtml = `
-        <div id="aiContentModal" class="ai-modal">
-            <div class="ai-modal-content">
-                <span class="ai-close">&times;</span>
-                <div class="ai-header">
-                    <h1 class="ai-modal-title">AI Content Generator</h1>
-                    <p class="ai-subtitle">Describe your topic and let AI create engaging content</p>
-                </div>
-                <div class="ai-input-area">
-                    <label class="ai-label">Topic or Keyword</label>
-                    <div class="ai-input-group">
-                        <textarea type="text" id="topicInput" class="ai-input-field"
-                            placeholder="Type your topic...">${currentContent}</textarea>
-                        <button id="generateContentBtn" class="ai-btn ai-btn-primary">Generate</button>
-                    </div>
-                </div>
-                <label class="ai-label">Generated Content</label>
-                <div class="ai-textarea-wrapper">
-                    <textarea id="contentTextArea" class="ai-textarea" rows="6"></textarea>
-                </div>
-                <div class="ai-modal-actions">
-                    <button id="submitContent" class="ai-btn ai-btn-secondary">Submit</button>
-                </div>
+    var modalHtml = `
+    <div id="aiContentModal" class="ai-modal">
+        <div class="ai-modal-content" style="background-image: url('assets/images/ai-modal-bg.png');">
+            <span class="ai-close">&times;</span>
+            <h1 class="ai-modal-title">Generate Content with AI</h1>
+
+            <p class="ai-instruction">Enter your topic, idea or keyword</p>
+            <div class="ai-input-container">
+                <input type="text" id="topicInput" class="ai-input-field" placeholder="Enter topic here...">
+                <button id="generateContentBtn" class="ai-btn">Generate Content</button>
+            </div>
+
+            <div class="textarea-container">
+            <textarea id="contentTextArea" class="ai-textarea" rows="6" cols="50">${currentContent}</textarea>
+            </div>
+            <div class="ai-modal-actions">
+                <button id="submitContent" class="ai-btn">Submit</button>
             </div>
         </div>
+    </div>
     `;
 
     $('body').append(modalHtml);
 
-    const modal = document.getElementById("aiContentModal");
+    var modal = document.getElementById("aiContentModal");
     modal.style.display = "block";
+
     modal.currentElement = parentElement;
 
-    $(".ai-close").on('click', function () {
+    $(".ai-close").on('click', function() {
         modal.style.display = "none";
         $("#aiContentModal").remove();
     });
 
-    $("#submitContent").on('click', function () {
-        const updatedContent = $("#contentTextArea").val();
-        parentElement.contents().filter(function () {
+    $("#submitContent").on('click', function() {
+        var updatedContent = $("#contentTextArea").val();
+
+        parentElement.contents().filter(function() {
             return this.nodeType === 3;
         }).first().replaceWith(updatedContent);
 
@@ -736,6 +376,18 @@ $(document).on('click', '.aiBotImage', function () {
         $("#aiContentModal").remove();
     });
 });
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -748,11 +400,7 @@ $(document).on('click', '.aiBotImage', function () {
         clearPreviousDropdowns();
 
         if (!anchor.find('.link-to-btn').length) {
-            var linkToButton = $(`
-            <button class="link-to-btn">
-                <img src="assets/images/custom/pencil-icon.png" alt="Edit">
-            </button>
-            `);
+            var linkToButton = $('<button class="link-to-btn"><i class="ri-pencil-fill"></i></button>');
             anchor.append(linkToButton);
 
             linkToButton.on('click', function (e) {
@@ -769,90 +417,79 @@ $(document).on('click', '.aiBotImage', function () {
     }
 
     // Create dropdown for editing anchor
-function createDropdown(anchor) {
-    var dropdownOptions = generateDropdownOptions();
-
-    var dropdownHTML = `
-        <div class="link-to-dropdown-container">
-            <div>
-                <h5>Edit Text:</h5>
-                <input
-                    type="text"
-                    class="anchor-text-input"
-                    placeholder="Edit your anchor text here..."
-                />
+    function createDropdown(anchor) {
+        var dropdownOptions = generateDropdownOptions();
+        var dropdownHTML = `
+            <div class="link-to-dropdown-container">
+                <div>
+                    <h5>Edit Text:</h5>
+                    <div id="editor-container"></div>
+                </div>
+                <div>
+                    <h5>Linked to Page:</h5>
+                    <select class="link-to-dropdown">${dropdownOptions}</select>
+                </div>
+                <div class="edit-button-container">
+                    <button class="close-anchor-edit">Close</button>
+                    <button class="submit-link">Submit</button>
+                </div>
             </div>
+        `;
+        anchor.after(dropdownHTML);
+        initializeQuill(anchor);
 
-            <div>
-                <h5>Linked to Page:</h5>
-                <select class="link-to-dropdown">${dropdownOptions}</select>
-            </div>
-
-            <div class="edit-button-container">
-                <button class="close-anchor-edit">Close</button>
-                <button class="submit-link">Submit</button>
-            </div>
-        </div>
-    `;
-
-    anchor.after(dropdownHTML);
-
-    initializeInputEditor(anchor);
-
-    var currentHrefCustom = anchor.attr('hrefcustom');
-    if (currentHrefCustom) {
-        anchor
-            .next('.link-to-dropdown-container')
-            .find('.link-to-dropdown')
-            .val(currentHrefCustom);
+        var currentHrefCustom = anchor.attr('hrefcustom');
+        if (currentHrefCustom) {
+            anchor.next('.link-to-dropdown-container').find('.link-to-dropdown').val(currentHrefCustom);
+        }
     }
-}
 
     // Generate dropdown options from dynamic-header
-function generateDropdownOptions() {
-    var options = '';
-    $('#dynamic-header li a').each(function () {
-        var hrefValue = $(this).attr('hrefcustom');
-        var linkText = $(this).text();
-        options += `<option value="${hrefValue}">${linkText}</option>`;
-    });
-    return options;
-}
+    function generateDropdownOptions() {
+        var options = '';
+        $('#dynamic-header li a').each(function () {
+            var hrefValue = $(this).attr('hrefcustom');
+            var linkText = $(this).text();
+            options += `<option value="${hrefValue}">${linkText}</option>`;
+        });
+        return options;
+    }
 
+    // Initialize Quill editor
+    function initializeQuill(anchor) {
+        var quill = new Quill('#editor-container', {
+            theme: 'snow',
+            modules: {
+                toolbar: [
+                    [{ 'font': [] }],
+                    ['bold', 'italic', 'underline'],
+                    [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                    ['link', 'image']
+                ]
+            },
+            placeholder: 'Edit your anchor text here...',
+        });
 
-// Initialize input-based editor
-function initializeInputEditor(anchor) {
-    var container = anchor.next('.link-to-dropdown-container');
-    var textInput = container.find('.anchor-text-input');
+        quill.root.innerHTML = anchor.text().trim();
+        setDropdownSelectedValue(anchor);
 
-    // Set existing anchor text in input
-    textInput.val(anchor.text().trim());
+        // Handle submission of changes
+        anchor.next('.link-to-dropdown-container').find('.submit-link').on('click', function () {
+            var newHref = anchor.next('.link-to-dropdown-container').find('.link-to-dropdown').val();
+            var newText = quill.root.innerHTML.trim().replace(/<\/?p>/g, '').trim();
 
-    // Submit button
-    container.find('.submit-link').on('click', function () {
-        var newHref = container.find('.link-to-dropdown').val();
-        var newText = textInput.val().trim();
+            anchor.attr('hrefcustom', newHref).html(newText);
+            anchor.next('.link-to-dropdown-container').remove();
+            alert('Anchor updated successfully!');
+        });
 
-        if (!newText) {
-            alert('Anchor text cannot be empty!');
-            return;
-        }
-
-        anchor
-            .attr('hrefcustom', newHref)
-            .text(newText);
-
-        container.remove();
-        alert('Anchor updated successfully!');
-    });
-
-    // Close button
-    container.find('.close-anchor-edit').on('click', function (e) {
-        e.stopPropagation();
-        container.remove();
-        anchor.find('.link-to-btn').remove();
-    });
-}
+        // Close button functionality to remove dropdown and the link-to-btn
+        anchor.next('.link-to-dropdown-container').find('.close-anchor-edit').on('click', function (e) {
+            e.stopPropagation();
+            anchor.next('.link-to-dropdown-container').remove();
+            anchor.find('.link-to-btn').remove();
+        });
+    }
 
     // Set selected value for dropdown
     function setDropdownSelectedValue(anchor) {
@@ -960,8 +597,6 @@ function initializeInputEditor(anchor) {
             }
         });
 
-
-
         wrapper.find('.editable').removeAttr('contenteditable');
         $('.activeEditor').removeClass('activeEditor');
         wrapper.removeClass('edit-mode');
@@ -971,8 +606,8 @@ function initializeInputEditor(anchor) {
         saveChanges.addClass('hidden').prop('disabled', true);
         topBar.addClass('hidden');
         $('#image-upload').remove();
-        $('a.edit-site').removeClass('edit-site');
-        $('a').addClass('edit-site').css('cursor', 'pointer');
+        // $('a.edit-site').removeClass('edit-site');
+        $('a').addClass('edit-site');
         var SliderContentOldHTML = localStorage.getItem('dynamicSliderContent');
         var dynamicSliderWrapper = $('.dynamic-slider-wrapper');
         if (dynamicSliderWrapper.length && SliderContentOldHTML) {
@@ -991,12 +626,7 @@ function initializeInputEditor(anchor) {
         var editedHTML = $('html').clone();
         editedHTML.find('a.edit-site').removeClass('edit-site');
         editedHTML.find('#top-bar').remove();
-        // remove tempory added hidden fields for img, pagename and file name
-        // $editedHTML.find('form#imgForm').remove();
-        // $editedHTML.find('input.selectedPageName[type="hidden"]').remove();
-        // $editedHTML.find('input.formFieldFileName').remove();
-        // remove tempory added base urls for loading project locally
-        // editedHTML.find('head base').remove();// removing the base <base href="/">
+
         // Remove unique IDs and buttons from each section-wrapper
         $('.section-wrapper').each(function() {
             $(this).removeAttr('id');
@@ -1050,16 +680,15 @@ function initializeInputEditor(anchor) {
 function editClientSite(filesDetailsMap) {
         filesDetailsMap["clientName"] = getCookie("clientName");
         filesDetailsMap["clientProjectName"] = getCookie("clientProjectName");
-        filesDetailsMap["pageName"] = $(".selectedPageName").val()||"index.html";
+        filesDetailsMap["pageName"] = $(".selectedPageName").val();
         // alert(getCookie("clientName"));
         //  alert(getCookie("clientProjectName"));
         // alert( $(".formFieldFileName").val());
         // filesDetailsMap["currentSelectedPage"] = getCookie("projectName");
-        var filename = filesDetailsMap["pageName"] 
 
         $.ajax({
             type: 'POST',
-            url: "/ucs/",
+            url: "es/",
             dataType: "text",
             contentType: 'application/json; charset=utf-8',
             data: JSON.stringify(filesDetailsMap),
@@ -1068,62 +697,9 @@ function editClientSite(filesDetailsMap) {
                 $('#loading-message').remove();
                // location.reload();
                 // $('#openIndex').click();
-                   window.location.href =
-    `/es/?clientName=${getCookie("clientName")}&clientProjectName=${getCookie("clientProjectName")}&srcReq=${filename}`;
-
-            //       var newTab = window.open("", "_self");
-
-            // // Inject <base> before writing HTML
-            // const baseUrl = `${window.location.protocol}//${window.location.host}/`;
-            // const updatedData = data.replace(
-            //     /<head([^>]*)>/i,
-            //     `<head$1><base href="${baseUrl}">`
-            // );
-
-            //   newTab.document.write(updatedData);
-            //   newTab.document.close();
-            //     newTab.onload = function () {
-            //         function appendElement(tag, attributes, toBody) {
-            //             var element;
-            //  if (tag === 'script') {
-            //         element = newTab.document.querySelector('script[src="' + attributes.src + '"]');
-            //         if (!element) {
-            //             element = newTab.document.createElement(tag);
-            //             for (var attr in attributes) {
-            //                 element[attr] = attributes[attr];
-            //             }
-            //             if (toBody) {
-            //                  newTab.document.body.appendChild(element);
-            //             } else {
-            //                 newTab.document.head.appendChild(element);
-            //             }
-            //         }
-            //     }
-            // }
-
-
-            //   $('<input>', {type: 'hidden',class: 'hidden selectedPageName',name: 'selectedPageName',value: filesDetailsMap["pageName"]}).appendTo(newTab.document.body);
-            //   appendElement('link', { rel: 'stylesheet', href: 'https://cdn.quilljs.com/1.3.6/quill.snow.css' }, false);
-            //   appendElement('link', { rel: 'stylesheet', href: 'assets/css/custom/editmode.css' }, false);
-            //   appendElement('link', { rel: 'stylesheet', href: 'assets/css/custom/custom.css' }, false);
-            //   appendElement('script', { src: 'https://cdn.quilljs.com/1.3.6/quill.min.js', type: 'text/javascript' }, true);
-            //   appendElement('script', { src: 'assets/js/custom/main.js', type: 'text/javascript' }, true);
-            //   appendElement('script', { src: 'assets/js/custom/editmode.js', type: 'text/javascript' }, true);
-            //   appendElement('script', { src: 'assets/js/custom/editModeScript.js', type: 'text/javascript' }, true);
-
-
-
-            //     var anchorTags = newTab.document.querySelectorAll('a');
-            //       anchorTags.forEach(function(anchor) {
-            //       anchor.classList.add('edit-site');
-            //   });
-
-
-            // };
 
             },
             error: function (xhr, errmsg, err) {
-
                 alert("Error----" + xhr.responseText);
                 $('#loading-message').remove();
             }
@@ -1172,9 +748,7 @@ $('#AddNewSection').click(function() {
 
 function createAndShowModal() {
     if ($('#dynamicModal').length) {
-        $('#imagePickerModal').modal('hide');
         $('#dynamicModal').modal('show');
-
         return;
     }
 
@@ -1239,337 +813,270 @@ function createAndShowModal() {
                             <div id="wrapper" class="middle-section-wrapper">
                                 <div id="no-components-message">There are no components available that match your selected category and section. Please select another combination.</div>
                                 <input id="currentSelectedValueOfPageComponents" type="hidden" value="" />
-                                    <div class="middle_sections_container" id="middle_sections_container">
-                                        <div id="home-1" class="component lazy-load-placeholder" category="Auto Repair Shops"></div>
-                                        <div id="home-2" class="component lazy-load-placeholder" category="Auto Repair Shops"></div>
-                                        <div id="home-3" class="component lazy-load-placeholder" category="Tutor"></div>
-                                        <div id="home-4" class="component lazy-load-placeholder" category="Coaching center"></div>
-                                        <div id="home-5" class="component lazy-load-placeholder" category="Coaching center"></div>
-                                        <div id="home-6" class="component lazy-load-placeholder" category="Coaching center"></div>
-                                        <div id="home-7" class="component lazy-load-placeholder" category="School"></div>
-                                        <!-- <div id="home-8" class="component lazy-load-placeholder" category="Hotel"></div> -->
-                                        <div id="home-9" class="component lazy-load-placeholder" category="Hotel/Lounges"></div>
-                                        <div id="home-10" class="component lazy-load-placeholder" category="Hotel/Lounges"></div>
-                                        <div id="home-11" class="component lazy-load-placeholder" category="Hotel/Lounges"></div>
-                                        <!-- <div id="home-12" class="component lazy-load-placeholder" category="Corporate/Company Site"></div> -->
-                                        <div id="home-13" class="component lazy-load-placeholder" category="Coaching center"></div>
-                                        <div id="home-14" class="component lazy-load-placeholder" category="Portfolio"></div>
-                                        <div id="home-15" class="component lazy-load-placeholder" category="Small Business"></div>
-                                        <div id="home-16" class="component lazy-load-placeholder" category="Portfolio"></div>
-                                        <div id="home-17" class="component lazy-load-placeholder" category="Portfolio"></div>
-                                        <div id="home-18" class="component lazy-load-placeholder" category="Portfolio"></div>
-                                        <div id="home-19" class="component lazy-load-placeholder" category="Travel Agencies"></div>
-                                        <div id="home-20" class="component lazy-load-placeholder" category="Restaurant"></div>
-                                        <div id="home-21" class="component lazy-load-placeholder" category="Restaurant"></div>
-                                        <div id="home-22" class="component lazy-load-placeholder" category="Pre-school & Daycare"></div>
-                                        <div id="home-23" class="component lazy-load-placeholder" category="Pre-school & Daycare"></div>
-                                        <div id="home-24" class="component lazy-load-placeholder" category="Pre-school & Daycare"></div>
-                                        <div id="home-25" class="component lazy-load-placeholder" category="Music Coach"></div>
-                                        <div id="home-26" class="component lazy-load-placeholder" category="Music Coach"></div>
-                                        <div id="home-27" class="component lazy-load-placeholder" category="Electronic Item Services"></div>
-                                        <div id="home-28" class="component lazy-load-placeholder" category="Electronic Item Services"></div>
-                                        <div id="home-29" class="component lazy-load-placeholder" category="Influencer"></div>
-                                        <div id="home-30" class="component lazy-load-placeholder" category="Influencer"></div>
-                                        <div id="home-31" class="component lazy-load-placeholder" category="Influencer"></div>
-                                        <!-- <div id="home-32" class="component lazy-load-placeholder" category="Small Business"></div> -->
-                                        <div id="home-33" class="component lazy-load-placeholder" category="Small Business"></div>
-                                        <div id="home-34" class="component lazy-load-placeholder" category="Real Estate Agencies"></div>
-                                        <div id="home-35" class="component lazy-load-placeholder" category="Real Estate Agencies"></div>
-                                        <div id="home-36" class="component lazy-load-placeholder" category="Yoga & Meditation"></div>
-                                        <div id="home-37" class="component lazy-load-placeholder" category="Nutritionist"></div>
-                                        <div id="home-38" class="component lazy-load-placeholder" category="Yoga & Meditation"></div>
-                                        <div id="home-39" class="component lazy-load-placeholder" category="Cafes & Bakeries"></div>
-                                        <div id="home-40" class="component lazy-load-placeholder" category="Salon & Spa"></div>
-                                        <div id="home-41" class="component lazy-load-placeholder" category="Real Estate Agencies"></div>
-                                        <div id="home-42" class="component lazy-load-placeholder" category="Real Estate Agencies"></div>
-                                        <div id="home-43" class="component lazy-load-placeholder" category="Gym"></div>
-                                        <div id="home-44" class="component lazy-load-placeholder" category="Clinic"></div>
-                                        <div id="home-45" class="component lazy-load-placeholder" category="Photography"></div>
-                                        <div id="home-46" class="component lazy-load-placeholder" category="Photography"></div>
-                                        <div id="home-47" class="component lazy-load-placeholder" category="Nutritionist"></div>
-                                        <div id="home-48" class="component lazy-load-placeholder" category="Chartered Accountant"></div>
-                                        <div id="home-49" class="component lazy-load-placeholder" category="Advocate "></div>
-                                        <div id="home-50" class="component lazy-load-placeholder" category="Advocate "></div>
-                                        <div id="home-51" class="component lazy-load-placeholder" category="Clinic"></div>
-                                        <div id="home-52" class="component lazy-load-placeholder" category="Clinic"></div>
-                                        <!-- <div id="home-53" class="component lazy-load-placeholder" category="Photography"></div> -->
-                                        <div id="home-54" class="component lazy-load-placeholder" category="Travel Agencies"></div>
-                                        <!-- <div id="home-55" class="component lazy-load-placeholder" category="Travel Agencies"></div> -->
-                                        <div id="home-56" class="component lazy-load-placeholder" category="Photography"></div>
-                                        <div id="home-57" class="component lazy-load-placeholder" category="Photography"></div>
-                                        <!-- <div id="home-58" class="component lazy-load-placeholder" category="Photography"></div> -->
-                                        <div id="home-59" class="component lazy-load-placeholder" category="Yoga & Meditation"></div>
-                                        <div id="home-60" class="component lazy-load-placeholder" category="Yoga & Meditation"></div>
-                                        <div id="home-61" class="component lazy-load-placeholder" category="Influencer"></div>
-                                        <div id="home-62" class="component lazy-load-placeholder" category="Influencer"></div>
-                                        <div id="home-63" class="component lazy-load-placeholder" category="Influencer"></div>
-                                        <div id="home-64" class="component lazy-load-placeholder" category="Portfolio"></div>
-                                        <div id="home-65" class="component lazy-load-placeholder" category="Portfolio"></div>
-                                        <div id="home-66" class="component lazy-load-placeholder" category="Portfolio"></div>
-                                        <div id="home-67" class="component lazy-load-placeholder" category="Portfolio"></div>
-                                        <div id="home-68" class="component lazy-load-placeholder" category="Portfolio"></div>
-                                        <!-- <div id="home-69" class="component lazy-load-placeholder" category="Software Companies"></div> -->
-                                        <!-- <div id="home-70" class="component lazy-load-placeholder" category="Tech Startups"></div> -->
-                                        <div id="home-71" class="component lazy-load-placeholder" category="Portfolio"></div>
-                                        <div id="home-72" class="component lazy-load-placeholder" category="Electrician"></div>
-                                        <div id="home-73" class="component lazy-load-placeholder" category="Financial Advisors"></div>
-                                        <div id="home-74" class="component lazy-load-placeholder" category="Real Estate Agencies"></div>
-                                        <div id="home-75" class="component lazy-load-placeholder" category="Music Coach"></div>
-                                        <div id="home-76" class="component lazy-load-placeholder" category="Restaurant"></div>
-                                        <div id="home-77" class="component lazy-load-placeholder" category="Makeup Artists"></div>
-                                        <div id="home-78" class="component lazy-load-placeholder" category="Travel Agencies"></div>
-                                        <div id="home-79" class="component lazy-load-placeholder" category="Salon & Spa"></div>
-                                        <div id="home-80" class="component lazy-load-placeholder" category="Interior Designer"></div>
-                                        <div id="home-81" class="component lazy-load-placeholder" category="Interior Designer"></div>
-                                        <div id="home-82" class="component lazy-load-placeholder" category="Interior Designer"></div>
-                                        <div id="home-84" class="component lazy-load-placeholder" category="Chartered Accountant"></div>
-                                        <div id="home-85" class="component lazy-load-placeholder" category="Architect"></div>
-                                        <div id="home-86" class="component lazy-load-placeholder" category="Advocate"></div>
-                                        <div id="home-87" class="component lazy-load-placeholder" category="Advocate"></div>
-                                        <div id="home-88" class="component lazy-load-placeholder" category="Advocate"></div>
-                                        <div id="home-89" class="component lazy-load-placeholder" category="catering"></div>
-                                        <div id="home-90" class="component lazy-load-placeholder" category="catering"></div>
+			<div class="middle_sections_container" id="middle_sections_container">
+				<div id="default-middle_section" class="component lazy-load-placeholder"></div>
+				<!-- <div id="home-1" name="Section-1 for Home Page" class="component lazy-load-placeholder"></div> -->
+				<!-- <div id="ourteam-1" class="component lazy-load-placeholder" category="Doctors"></div> -->
+				<div id="home-1" class="component lazy-load-placeholder" category="Auto Repair Shops"></div>
+				<div id="home-2" class="component lazy-load-placeholder" category="Auto Repair Shops"></div>
+				<div id="home-3" class="component lazy-load-placeholder" category="Tutor"></div>
+				<div id="home-4" class="component lazy-load-placeholder" category="Coaching center"></div>
+				<div id="home-5" class="component lazy-load-placeholder" category="Coaching center"></div>
+				<div id="home-6" class="component lazy-load-placeholder" category="Coaching center"></div>
+				<div id="home-7" class="component lazy-load-placeholder" category="School"></div>
+				<!-- <div id="home-8" class="component lazy-load-placeholder" category="Hotel"></div> -->
+				<div id="home-9" class="component lazy-load-placeholder" category="Hotel/Lounges"></div>
+				<div id="home-10" class="component lazy-load-placeholder" category="Hotel/Lounges"></div>
+				<div id="home-11" class="component lazy-load-placeholder" category="Hotel/Lounges"></div>
+				<!-- <div id="home-12" class="component lazy-load-placeholder" category="Corporate/Company Site"></div> -->
+				<div id="home-13" class="component lazy-load-placeholder" category="Coaching center"></div>
+				<div id="home-14" class="component lazy-load-placeholder" category="Portfolio"></div>
+				<div id="home-15" class="component lazy-load-placeholder" category="Small Business"></div>
+				<div id="home-16" class="component lazy-load-placeholder" category="Portfolio"></div>
+				<div id="home-17" class="component lazy-load-placeholder" category="Portfolio"></div>
+				<div id="home-18" class="component lazy-load-placeholder" category="Portfolio"></div>
+				<div id="home-19" class="component lazy-load-placeholder" category="Travel Blogs"></div>
+				<div id="home-20" class="component lazy-load-placeholder" category="Restaurants"></div>
+				<div id="home-21" class="component lazy-load-placeholder" category="Restaurants"></div>
+				<div id="home-22" class="component lazy-load-placeholder" category="Pre-school & Daycare"></div>
+				<div id="home-23" class="component lazy-load-placeholder" category="Pre-school & Daycare"></div>
+				<div id="home-24" class="component lazy-load-placeholder" category="Pre-school & Daycare"></div>
+				<div id="home-25" class="component lazy-load-placeholder" category="Music Coach"></div>
+				<div id="home-26" class="component lazy-load-placeholder" category="Music Coach"></div>
+				<div id="home-27" class="component lazy-load-placeholder" category="Electronic Item Services"></div>
+				<div id="home-28" class="component lazy-load-placeholder" category="Electronic Item Services"></div>
+				<div id="home-29" class="component lazy-load-placeholder" category="Influencer"></div>
+				<div id="home-30" class="component lazy-load-placeholder" category="Influencer"></div>
+				<div id="home-31" class="component lazy-load-placeholder" category="Influencer"></div>
+				<!-- <div id="home-32" class="component lazy-load-placeholder" category="Small Business"></div> -->
+				<div id="home-33" class="component lazy-load-placeholder" category="Small Business"></div>
+				<div id="home-34" class="component lazy-load-placeholder" category="Real Estate Agencies"></div>
+				<div id="home-35" class="component lazy-load-placeholder" category="Real Estate Agencies"></div>
+				<div id="home-36" class="component lazy-load-placeholder" category="Yoga & Meditation"></div>
+				<div id="home-37" class="component lazy-load-placeholder" category="Nutritionist"></div>
+				<div id="home-38" class="component lazy-load-placeholder" category="Yoga & Meditation"></div>
+				<div id="home-39" class="component lazy-load-placeholder" category="Cafes & Bakeries"></div>
+				<div id="home-40" class="component lazy-load-placeholder" category="Salons & Spas"></div>
+				<div id="home-41" class="component lazy-load-placeholder" category="Real Estate Agencies"></div>
+				<div id="home-42" class="component lazy-load-placeholder" category="Real Estate Agencies"></div>
+				<div id="home-43" class="component lazy-load-placeholder" category="Fitness & Gym"></div>
+				<div id="home-44" class="component lazy-load-placeholder" category="Clinic"></div>
+				<div id="home-45" class="component lazy-load-placeholder" category="Photography"></div>
+				<div id="home-46" class="component lazy-load-placeholder" category="Photography"></div>
+				<div id="home-47" class="component lazy-load-placeholder" category="Nutritionist"></div>
+				<div id="home-48" class="component lazy-load-placeholder" category="Chartered Accountant"></div>
+				<div id="home-49" class="component lazy-load-placeholder" category="Advocate "></div>
+				<div id="home-50" class="component lazy-load-placeholder" category="Advocate "></div>
+				<div id="home-51" class="component lazy-load-placeholder" category="Clinic"></div>
+				<div id="home-52" class="component lazy-load-placeholder" category="Clinic"></div>
+				<!-- <div id="home-53" class="component lazy-load-placeholder" category="Photography"></div> -->
+				<div id="home-54" class="component lazy-load-placeholder" category="Travel Blogs"></div>
+				<!-- <div id="home-55" class="component lazy-load-placeholder" category="Travel Blogs"></div> -->
+				<div id="home-56" class="component lazy-load-placeholder" category="Photography"></div>
+				<div id="home-57" class="component lazy-load-placeholder" category="Photography"></div>
+				<!-- <div id="home-58" class="component lazy-load-placeholder" category="Photography"></div> -->
+				<div id="home-59" class="component lazy-load-placeholder" category="Yoga & Meditation"></div>
+				<div id="home-60" class="component lazy-load-placeholder" category="Yoga & Meditation"></div>
+				<div id="home-61" class="component lazy-load-placeholder" category="Influencer"></div>
+				<div id="home-62" class="component lazy-load-placeholder" category="Influencer"></div>
+				<div id="home-63" class="component lazy-load-placeholder" category="Influencer"></div>
+				<div id="home-64" class="component lazy-load-placeholder" category="Portfolio"></div>
+				<div id="home-65" class="component lazy-load-placeholder" category="Portfolio"></div>
+				<div id="home-66" class="component lazy-load-placeholder" category="Portfolio"></div>
+				<div id="home-67" class="component lazy-load-placeholder" category="Portfolio"></div>
+				<div id="home-68" class="component lazy-load-placeholder" category="Portfolio"></div>
+				<!-- <div id="home-69" class="component lazy-load-placeholder" category="Software Companies"></div> -->
+				<!-- <div id="home-70" class="component lazy-load-placeholder" category="Tech Startups"></div> -->
+				<div id="home-71" class="component lazy-load-placeholder" category="Portfolio"></div>
+				<div id="home-72" class="component lazy-load-placeholder" category="Electrician"></div>
+				<div id="home-73" class="component lazy-load-placeholder" category="Financial Advisors"></div>
+				<div id="home-74" class="component lazy-load-placeholder" category="Real Estate Agencies"></div>
+				<div id="home-75" class="component lazy-load-placeholder" category="Music Coach"></div>
 
-                                        <div id="about-1" class="component lazy-load-placeholder" category="Collage"></div>
-                                        <!-- <div id="about-2" class="component lazy-load-placeholder" category="Corporate/Company Site"></div> -->
-                                        <div id="about-3" class="component lazy-load-placeholder" category="Coaching center"></div>
-                                        <div id="about-4" class="component lazy-load-placeholder" category="Collage"></div>
-                                        <div id="about-5" class="component lazy-load-placeholder" category="Coaching center"></div>
-                                        <div id="about-6" class="component lazy-load-placeholder" category="Tutor"></div>
-                                        <div id="about-7" class="component lazy-load-placeholder" category="Clinic"></div>
-                                        <div id="about-8" class="component lazy-load-placeholder" category="Clinic"></div>
-                                        <div id="about-9" class="component lazy-load-placeholder" category="Hotel/Lounges"></div>
-                                        <div id="about-10" class="component lazy-load-placeholder" category="Weddings"></div>
-                                        <div id="about-11" class="component lazy-load-placeholder" category="Weddings"></div>
-                                        <div id="about-12" class="component lazy-load-placeholder" category="Financial Advisors"></div>
-                                        <div id="about-13" class="component lazy-load-placeholder" category="Pre-school & Daycare"></div>
-                                        <div id="about-14" class="component lazy-load-placeholder" category="Pre-school & Daycare"></div>
-                                        <div id="about-15" class="component lazy-load-placeholder" category="Pre-school & Daycare"></div>
-                                        <!-- <div id="about-16" class="component lazy-load-placeholder" category="Corporate/Company Site"></div> -->
-                                        <div id="about-17" class="component lazy-load-placeholder" category="Real Estate Agencies"></div>
-                                        <div id="about-18" class="component lazy-load-placeholder" category="Music Coach"></div>
-                                        <div id="about-19" class="component lazy-load-placeholder" category="Clinic"></div>
-                                        <div id="about-20" class="component lazy-load-placeholder" category="Event Planner"></div>
-                                        <!-- <div id="about-21" class="component lazy-load-placeholder" category="Vacation Rentals"></div> -->
-                                        <div id="about-22" class="component lazy-load-placeholder" category="Restaurant"></div>
-                                        <div id="about-23" class="component lazy-load-placeholder" category="Gym"></div>
-                                        <div id="about-24" class="component lazy-load-placeholder" category="Clinic"></div>
-                                        <div id="about-25" class="component lazy-load-placeholder" category="Photography"></div>
-                                        <div id="about-26" class="component lazy-load-placeholder" category="Nutritionist"></div>
-                                        <div id="about-27" class="component lazy-load-placeholder" category="Nutritionist"></div>
-                                        <div id="about-28" class="component lazy-load-placeholder" category="Coaching center"></div>
-                                        <div id="about-29" class="component lazy-load-placeholder" category="Coaching center"></div>
-                                        <div id="about-30" class="component lazy-load-placeholder" category="Chartered Accountant"></div>
-                                        <div id="about-31" class="component lazy-load-placeholder" category="Advocate"></div>
-                                        <div id="about-32" class="component lazy-load-placeholder" category="Clinic"></div>
+				<div id="about-1" class="component lazy-load-placeholder" category="Collage"></div>
+				<!-- <div id="about-2" class="component lazy-load-placeholder" category="Corporate/Company Site"></div> -->
+				<div id="about-3" class="component lazy-load-placeholder" category="Coaching center"></div>
+				<div id="about-4" class="component lazy-load-placeholder" category="Collage"></div>
+				<div id="about-5" class="component lazy-load-placeholder" category="Coaching center"></div>
+				<div id="about-6" class="component lazy-load-placeholder" category="Tutor"></div>
+				<div id="about-7" class="component lazy-load-placeholder" category="Clinic"></div>
+				<div id="about-8" class="component lazy-load-placeholder" category="Clinic"></div>
+				<div id="about-9" class="component lazy-load-placeholder" category="Hotel/Lounges"></div>
+				<div id="about-10" class="component lazy-load-placeholder" category="Weddings"></div>
+				<div id="about-11" class="component lazy-load-placeholder" category="Weddings"></div>
+				<div id="about-12" class="component lazy-load-placeholder" category="Financial Advisors"></div>
+				<div id="about-13" class="component lazy-load-placeholder" category="Pre-school & Daycare"></div>
+				<div id="about-14" class="component lazy-load-placeholder" category="Pre-school & Daycare"></div>
+				<div id="about-15" class="component lazy-load-placeholder" category="Pre-school & Daycare"></div>
+				<!-- <div id="about-16" class="component lazy-load-placeholder" category="Corporate/Company Site"></div> -->
+				<div id="about-17" class="component lazy-load-placeholder" category="Real Estate Agencies"></div>
+				<div id="about-18" class="component lazy-load-placeholder" category="Music Coach"></div>
+				<div id="about-19" class="component lazy-load-placeholder" category="Clinic"></div>
+				<div id="about-20" class="component lazy-load-placeholder" category="Event Planner"></div>
+				<!-- <div id="about-21" class="component lazy-load-placeholder" category="Vacation Rentals"></div> -->
+				<div id="about-22" class="component lazy-load-placeholder" category="Restaurants"></div>
+				<div id="about-23" class="component lazy-load-placeholder" category="Fitness & Gym"></div>
+				<div id="about-24" class="component lazy-load-placeholder" category="Clinic"></div>
+				<div id="about-25" class="component lazy-load-placeholder" category="Photography"></div>
+				<div id="about-26" class="component lazy-load-placeholder" category="Nutritionist"></div>
+				<div id="about-27" class="component lazy-load-placeholder" category="Nutritionist"></div>
+				<div id="about-28" class="component lazy-load-placeholder" category="Coaching center"></div>
+				<div id="about-29" class="component lazy-load-placeholder" category="Coaching center"></div>
+				<div id="about-30" class="component lazy-load-placeholder" category="Chartered Accountant"></div>
+				<div id="about-31" class="component lazy-load-placeholder" category="Advocate"></div>
+				<div id="about-32" class="component lazy-load-placeholder" category="Clinic"></div>
 
-                                        <div id="about-33" class="component lazy-load-placeholder" category="Clinic"></div>
-                                        <div id="about-34" class="component lazy-load-placeholder" category="Yoga & Meditation"></div>
+				<div id="about-33" class="component lazy-load-placeholder" category="Clinic"></div>
+				<div id="about-34" class="component lazy-load-placeholder" category="Yoga & Meditation"></div>
 
-                                        <div id="about-35" class="component lazy-load-placeholder" category="Yoga & Meditation"></div>
-                                        <div id="about-36" class="component lazy-load-placeholder" category="Portfolio"></div>
-                                        <div id="about-37" class="component lazy-load-placeholder" category="Portfolio"></div>
-                                        <div id="about-38" class="component lazy-load-placeholder" category="Portfolio"></div>
-                                        <div id="about-39" class="component lazy-load-placeholder" category="Portfolio"></div>
-                                        <div id="about-40" class="component lazy-load-placeholder" category="Portfolio"></div>
-                                        <!-- <div id="about-41" class="component lazy-load-placeholder" category="Software Companies"></div> -->
-                                        <!-- <div id="about-42" class="component lazy-load-placeholder" category="Tech Startups"></div> -->
-                                        <div id="about-43" class="component lazy-load-placeholder" category="Portfolio"></div>
-                                        <div id="about-44" class="component lazy-load-placeholder" category="Financial Advisors"></div>
-                                        <div id="about-45" class="component lazy-load-placeholder" category="Real Estate Agencies"></div>
-                                        <div id="about-46" class="component lazy-load-placeholder" category="Financial Advisors"></div>
-                                        <div id="about-47" class="component lazy-load-placeholder" category="Music Coach"></div>
-                                        <div id="about-48" class="component lazy-load-placeholder" category="Restaurant"></div>
-                                        <div id="about-49" class="component lazy-load-placeholder" category="Travel Agencies"></div>
-                                        <div id="about-50" class="component lazy-load-placeholder" category="Salon & Spa"></div>
-                                        <div id="about-51" class="component lazy-load-placeholder" category="Interior Designer"></div>
-                                        <div id="about-52" class="component lazy-load-placeholder" category="Interior Designer"></div>
-                                        <div id="about-53" class="component lazy-load-placeholder" category="Chartered Accountant"></div>
-                                        <div id="about-54" class="component lazy-load-placeholder" category="Company Secretary"></div>
-                                        <div id="about-55" class="component lazy-load-placeholder" category="Architect"></div>
-                                        <div id="about-56" class="component lazy-load-placeholder" category="Architect"></div>
-                                        <div id="about-57" class="component lazy-load-placeholder" category="Architect"></div>
-                                        <div id="about-58" class="component lazy-load-placeholder" category="Advocate"></div>
-                                        <div id="about-59" class="component lazy-load-placeholder" category="Advocate"></div>
-                                        <div id="about-60" class="component lazy-load-placeholder" category="Advocate"></div>
-                                        <div id="about-61" class="component lazy-load-placeholder" category="Nutritionist"></div>
-                                        <div id="about-62" class="component lazy-load-placeholder" category="Nutritionist"></div>
-                                        <div id="about-63" class="component lazy-load-placeholder" category="Nutritionist"></div>
-                                        <div id="about-64" class="component lazy-load-placeholder" category="catering"></div>
+				<div id="about-35" class="component lazy-load-placeholder" category="Yoga & Meditation"></div>
+				<div id="about-36" class="component lazy-load-placeholder" category="Portfolio"></div>
+				<div id="about-37" class="component lazy-load-placeholder" category="Portfolio"></div>
+				<div id="about-38" class="component lazy-load-placeholder" category="Portfolio"></div>
+				<div id="about-39" class="component lazy-load-placeholder" category="Portfolio"></div>
+				<div id="about-40" class="component lazy-load-placeholder" category="Portfolio"></div>
+				<!-- <div id="about-41" class="component lazy-load-placeholder" category="Software Companies"></div> -->
+				<!-- <div id="about-42" class="component lazy-load-placeholder" category="Tech Startups"></div> -->
+				<div id="about-43" class="component lazy-load-placeholder" category="Portfolio"></div>
+				<div id="about-44" class="component lazy-load-placeholder" category="Financial Advisors"></div>
+				<div id="about-45" class="component lazy-load-placeholder" category="Real Estate Agencies"></div>
+				<div id="about-46" class="component lazy-load-placeholder" category="Financial Advisors"></div>
+				<div id="about-47" class="component lazy-load-placeholder" category="Music Coach"></div>
 
 
-                                        <!-- <div id="courses-1" class="component lazy-load-placeholder" category="Corporate/Company Site"></div> -->
-                                        <div id="courses-2" class="component lazy-load-placeholder" category="Tutor"></div>
-                                        <div id="courses-3" class="component lazy-load-placeholder" category="Tutor"></div>
-                                        <div id="courses-4" class="component lazy-load-placeholder" category="Pre-school & Daycare"></div>
-                                        <div id="courses-5" class="component lazy-load-placeholder" category="Gym"></div>
-                                        <div id="courses-6" class="component lazy-load-placeholder" category="Coaching center"></div>
-                                        <!-- <div id="courses-7" class="component lazy-load-placeholder" category="Software Companies"></div> -->
+				<!-- <div id="courses-1" class="component lazy-load-placeholder" category="Corporate/Company Site"></div> -->
+				<div id="courses-2" class="component lazy-load-placeholder" category="Tutor"></div>
+				<div id="courses-3" class="component lazy-load-placeholder" category="Tutor"></div>
+				<div id="courses-4" class="component lazy-load-placeholder" category="Pre-school & Daycare"></div>
+				<div id="courses-5" class="component lazy-load-placeholder" category="Fitness & Gym"></div>
+				<div id="courses-6" class="component lazy-load-placeholder" category="Coaching center"></div>
+				<!-- <div id="courses-7" class="component lazy-load-placeholder" category="Software Companies"></div> -->
 
-                                        <div id="events-1" class="component lazy-load-placeholder" category="Tutor"></div>
-                                        <!-- <div id="events-2" class="component lazy-load-placeholder" category="Corporate/Company Site"></div> -->
-                                        <div id="events-3" class="component lazy-load-placeholder" category="Event Planner "></div>
-                                        <div id="events-4" class="component lazy-load-placeholder" category="Chartered Accountant"></div>
-                                        <div id="events-5" class="component lazy-load-placeholder" category="Chartered Accountant"></div>
-                                        <div id="events-6" class="component lazy-load-placeholder" category="Music Coach"></div>
-                                        <div id="events-7" class="component lazy-load-placeholder" category="Salon & Spa"></div>
+				<div id="events-1" class="component lazy-load-placeholder" category="Tutor"></div>
+				<!-- <div id="events-2" class="component lazy-load-placeholder" category="Corporate/Company Site"></div> -->
+				<div id="events-3" class="component lazy-load-placeholder" category="Event Planner "></div>
+				<div id="events-4" class="component lazy-load-placeholder" category="Chartered Accountant"></div>
+				<div id="events-5" class="component lazy-load-placeholder" category="Chartered Accountant"></div>
 
 
-                                        <div id="news-1" class="component lazy-load-placeholder" category="Financial Advisors"></div>
-                                        <div id="news-2" class="component lazy-load-placeholder" category="Coaching center"></div>
-                                        <div id="news-3" class="component lazy-load-placeholder" category="Auto Repair Shops"></div>
-                                        <!-- <div id="news-4" class="component lazy-load-placeholder" category="Artist/Illustrator"></div> -->
-                                        <div id="news-5" class="component lazy-load-placeholder" category="Event Planner"></div>
-                                        <div id="news-6" class="component lazy-load-placeholder" category="Clinic"></div>
-                                        <div id="news-7" class="component lazy-load-placeholder" category="Financial Advisors"></div>
+				<div id="news-1" class="component lazy-load-placeholder" category="Financial Advisors"></div>
+				<div id="news-2" class="component lazy-load-placeholder" category="Coaching center"></div>
+				<div id="news-3" class="component lazy-load-placeholder" category="Auto Repair Shops"></div>
+				<!-- <div id="news-4" class="component lazy-load-placeholder" category="Artist/Illustrator"></div> -->
+				<div id="news-5" class="component lazy-load-placeholder" category="Event Planner"></div>
+				<div id="news-6" class="component lazy-load-placeholder" category="Clinic"></div>
+				<div id="news-7" class="component lazy-load-placeholder" category="Financial Advisors"></div>
 
-                                        <div id="testimonial-1" class="component lazy-load-placeholder"></div>
-                                        <div id="testimonial-2" class="component lazy-load-placeholder" category="Photography"></div>
-                                        <div id="testimonial-3" class="component lazy-load-placeholder"></div>
-                                        <div id="testimonial-4" class="component lazy-load-placeholder" category="Clinic"></div>
-                                        <!-- <div id="testimonial-5" class="component lazy-load-placeholder" category="Corporate/Company Site"></div> -->
-                                        <!-- <div id="testimonial-6" class="component lazy-load-placeholder" category="CA"></div> -->
-                                        <div id="testimonial-8" class="component lazy-load-placeholder"></div>
-                                        <div id="testimonial-9" class="component lazy-load-placeholder" category="Graphic Design"></div>
-                                        <div id="testimonial-10" class="component lazy-load-placeholder" category="Writing/Journalism"></div>
-                                        <!-- <div id="testimonial-11" class="component lazy-load-placeholder" category="Conferences & Seminars"></div> -->
-                                        <div id="testimonial-12" class="component lazy-load-placeholder" category="Restaurant"></div>
-                                        <div id="testimonial-13" class="component lazy-load-placeholder" category="Nutritionist"></div>
-                                        <div id="testimonial-14" class="component lazy-load-placeholder" category="Salon & Spa"></div>
-                                        <div id="testimonial-15" class="component lazy-load-placeholder" category="Travel Agencies"></div>
-                                        <div id="testimonial-16" class="component lazy-load-placeholder" category="Advocate"></div>
+				<div id="testimonial-1" class="component lazy-load-placeholder"></div>
+				<div id="testimonial-2" class="component lazy-load-placeholder" category="Photography"></div>
+				<div id="testimonial-3" class="component lazy-load-placeholder"></div>
+				<div id="testimonial-4" class="component lazy-load-placeholder" category="Clinic"></div>
+				<!-- <div id="testimonial-5" class="component lazy-load-placeholder" category="Corporate/Company Site"></div> -->
+				<!-- <div id="testimonial-6" class="component lazy-load-placeholder" category="CA"></div> -->
+				<div id="testimonial-8" class="component lazy-load-placeholder"></div>
+				<div id="testimonial-9" class="component lazy-load-placeholder" category="Graphic Design"></div>
+				<div id="testimonial-10" class="component lazy-load-placeholder" category="Writing/Journalism"></div>
+				<!-- <div id="testimonial-11" class="component lazy-load-placeholder" category="Conferences & Seminars"></div> -->
+				<div id="testimonial-12" class="component lazy-load-placeholder" category="Restaurants"></div>
+				<div id="testimonial-13" class="component lazy-load-placeholder" category="Nutritionist"></div>
 
 
-                                        <div id="slider-1" class="component lazy-load-placeholder" category="School"></div>
-                                        <div id="slider-2" class="component lazy-load-placeholder" category="Electronic Item Services"></div>
-                                        <div id="slider-4" class="component lazy-load-placeholder" category="Restaurant"></div>
+				<div id="slider-1" class="component lazy-load-placeholder" category="School"></div>
+				<div id="slider-2" class="component lazy-load-placeholder" category="Electronic Item Services"></div>
+				<div id="slider-4" class="component lazy-load-placeholder" category="Restaurants"></div>
 
-                                        <!-- <div id="slider-3" class="component lazy-load-placeholder"></div> -->
-                                        <div id="pricing-1" class="component lazy-load-placeholder"></div>
-                                        <div id="pricing-2" class="component lazy-load-placeholder" category="Financial Advisors"></div>
-                                        <div id="pricing-3" class="component lazy-load-placeholder" category="Musician/Band"></div>
-                                        <div id="pricing-4" class="component lazy-load-placeholder" category="Tutor"></div>
-                                        <div id="pricing-5" class="component lazy-load-placeholder" category="Coaching center"></div>
-                                        <div id="pricing-6" class="component lazy-load-placeholder" category="Coaching center"></div>
-                                        <div id="pricing-7" class="component lazy-load-placeholder" category="Photography"></div>
-                                        <div id="pricing-8" class="component lazy-load-placeholder" category="Chartered Accountant"></div>
-                                        <div id="pricing-9" class="component lazy-load-placeholder" category="Chartered Accountant"></div>
-                                        <div id="pricing-10" class="component lazy-load-placeholder" category="Music Coach"></div>
-                                        <div id="pricing-11" class="component lazy-load-placeholder" category="Makeup Artists"></div>
+				<!-- <div id="slider-3" class="component lazy-load-placeholder"></div> -->
+				<div id="pricing-1" class="component lazy-load-placeholder"></div>
+				<div id="pricing-2" class="component lazy-load-placeholder" category="Financial Advisors"></div>
+				<div id="pricing-3" class="component lazy-load-placeholder" category="Musician/Band"></div>
+				<div id="pricing-4" class="component lazy-load-placeholder" category="Tutor"></div>
+				<div id="pricing-5" class="component lazy-load-placeholder" category="Coaching center"></div>
+				<div id="pricing-6" class="component lazy-load-placeholder" category="Coaching center"></div>
+				<div id="pricing-7" class="component lazy-load-placeholder" category="Photography"></div>
+				<div id="pricing-8" class="component lazy-load-placeholder" category="Chartered Accountant"></div>
+				<div id="pricing-9" class="component lazy-load-placeholder" category="Chartered Accountant"></div>
+				<div id="pricing-10" class="component lazy-load-placeholder" category="Music Coach"></div>
 
-                                        <div id="contact-1" class="component lazy-load-placeholder"></div>
-                                        <div id="contact-2" class="component lazy-load-placeholder"></div>
-                                        <div id="contact-3" class="component lazy-load-placeholder"></div>
-                                        <div id="contact-4" class="component lazy-load-placeholder"></div>
-                                        <div id="contact-5" class="component lazy-load-placeholder"></div>
-                                        <div id="contact-6" class="component lazy-load-placeholder"></div>
-                                        <div id="contact-7" class="component lazy-load-placeholder"></div>
-                                        <div id="contact-8" class="component lazy-load-placeholder"></div>
-                                        <div id="contact-9" class="component lazy-load-placeholder" category="Real Estate Agencies"></div>
-                                        <div id="contact-10" class="component lazy-load-placeholder" category="Restaurant"></div>
-                                        <div id="contact-11" class="component lazy-load-placeholder" category="Gym"></div>
-                                        <div id="contact-12" class="component lazy-load-placeholder" category="Coaching center"></div>
-                                        <div id="contact-13" class="component lazy-load-placeholder" category="Chartered Accountant"></div>
-                                        <div id="contact-14" class="component lazy-load-placeholder" category="Advocate "></div>
-                                        <div id="contact-15" class="component lazy-load-placeholder" category="Portfolio"></div>
-                                        <!-- <div id="contact-16" class="component lazy-load-placeholder" category="Tech Startups"></div> -->
-                                        <div id="contact-17" class="component lazy-load-placeholder" category="Financial Advisors"></div>
-                                        <div id="contact-18" class="component lazy-load-placeholder" category="Financial Advisors"></div>
-                                        <div id="contact-19" class="component lazy-load-placeholder" category="Makeup Artists"></div>
-                                        <div id="contact-20" class="component lazy-load-placeholder" category="Salon & Spa"></div>
-                                        <div id="contact-21" class="component lazy-load-placeholder" category="Chartered Accountant"></div>
-                                        <div id="contact-22" class="component lazy-load-placeholder" category="Company Secretary"></div>
-                                        <div id="contact-23" class="component lazy-load-placeholder" category="Architect"></div>
-                                        <div id="contact-24" class="component lazy-load-placeholder" category="Advocate"></div>
-                                        <div id="contact-25" class="component lazy-load-placeholder" category="Nutritionist"></div>
+				<div id="contact-1" class="component lazy-load-placeholder"></div>
+				<div id="contact-2" class="component lazy-load-placeholder"></div>
+				<div id="contact-3" class="component lazy-load-placeholder"></div>
+				<div id="contact-4" class="component lazy-load-placeholder"></div>
+				<div id="contact-5" class="component lazy-load-placeholder"></div>
+				<div id="contact-6" class="component lazy-load-placeholder"></div>
+				<div id="contact-7" class="component lazy-load-placeholder"></div>
+				<div id="contact-8" class="component lazy-load-placeholder"></div>
+				<div id="contact-9" class="component lazy-load-placeholder" category="Real Estate Agencies"></div>
+				<div id="contact-10" class="component lazy-load-placeholder" category="Restaurants"></div>
+				<div id="contact-11" class="component lazy-load-placeholder" category="Fitness & Gym"></div>
+				<div id="contact-12" class="component lazy-load-placeholder" category="Coaching center"></div>
+				<div id="contact-13" class="component lazy-load-placeholder" category="Chartered Accountant"></div>
+				<div id="contact-14" class="component lazy-load-placeholder" category="Advocate "></div>
+				<div id="contact-15" class="component lazy-load-placeholder" category="Portfolio"></div>
+				<!-- <div id="contact-16" class="component lazy-load-placeholder" category="Tech Startups"></div> -->
+				<div id="contact-17" class="component lazy-load-placeholder" category="Financial Advisors"></div>
+				<div id="contact-18" class="component lazy-load-placeholder" category="Financial Advisors"></div>
 
-                                        <div id="services-1" class="component lazy-load-placeholder" category="Clinic"></div>
-                                        <div id="services-2" class="component lazy-load-placeholder" category="Clinic"></div>
-                                        <div id="services-3" class="component lazy-load-placeholder" category="Clinic"></div>
-                                        <div id="services-4" class="component lazy-load-placeholder" category="Hotel/Lounges"></div>
-                                        <div id="services-5" class="component lazy-load-placeholder" category="Chartered Accountant"></div>
-                                        <div id="services-6" class="component lazy-load-placeholder" category="Chartered Accountant"></div>
-                                        <div id="services-7" class="component lazy-load-placeholder" category="Financial Advisors"></div>
-                                        <div id="services-8" class="component lazy-load-placeholder" category="Music Coach"></div>
-                                        <div id="services-9" class="component lazy-load-placeholder" category="Company Secretary"></div>
-                                        <div id="services-10" class="component lazy-load-placeholder" category="Company Secretary"></div>
-                                        <div id="services-11" class="component lazy-load-placeholder" category="Photography"></div>
-                                        <!-- <div id="services-12" class="component lazy-load-placeholder" category="Artist/Illustrator"></div> -->
-                                        <div id="services-13" class="component lazy-load-placeholder" category="Nutritionist"></div>
-                                        <div id="services-14" class="component lazy-load-placeholder" category="Cafes & Bakeries"></div>
-                                        <div id="services-15" class="component lazy-load-placeholder" category="Catering Services"></div>
-                                        <div id="services-16" class="component lazy-load-placeholder" category="Restaurant"></div>
-                                        <div id="services-17" class="component lazy-load-placeholder" category="Clinic"></div>
-                                        <div id="services-18" class="component lazy-load-placeholder" category="Coaching center"></div>
-                                        <div id="services-19" class="component lazy-load-placeholder" category="Advocate "></div>
-                                        <div id="services-20" class="component lazy-load-placeholder" category="Clinic"></div>
-                                        <div id="services-21" class="component lazy-load-placeholder" category="Portfolio"></div>
-                                        <div id="services-22" class="component lazy-load-placeholder" category="Tech Startups"></div>
-                                        <div id="services-23" class="component lazy-load-placeholder" category="Portfolio"></div>
-                                        <div id="services-24" class="component lazy-load-placeholder" category="Real Estate Agencies"></div>
-                                        <div id="services-25" class="component lazy-load-placeholder" category="Financial Advisors"></div>
-                                        <div id="services-26" class="component lazy-load-placeholder" category="Music Coach"></div>
-                                        <div id="services-27" class="component lazy-load-placeholder" category="Makeup Artists"></div>
-                                        <div id="services-28" class="component lazy-load-placeholder" category="Salon & Spa"></div>
-                                        <div id="services-29" class="component lazy-load-placeholder" category="Interior Designer"></div>
-                                        <!-- <div id="services-30" class="component lazy-load-placeholder" category="Chartered Accountant"></div> -->
-                                        <div id="services-31" class="component lazy-load-placeholder" category="Chartered Accountant"></div>
-                                        <div id="services-32" class="component lazy-load-placeholder" category="Company Secretary"></div>
-                                        <div id="services-33" class="component lazy-load-placeholder" category="Company Secretary"></div>
-                                        <div id="services-34" class="component lazy-load-placeholder" category="Architect"></div>
-                                        <div id="services-35" class="component lazy-load-placeholder" category="Architect"></div>
-                                        <div id="services-36" class="component lazy-load-placeholder" category="Architect"></div>
-                                        <div id="services-37" class="component lazy-load-placeholder" category="Advocate"></div>
-                                        <div id="services-38" class="component lazy-load-placeholder" category="Nutritionist"></div>
-                                        <div id="services-39" class="component lazy-load-placeholder" category="Nutritionist"></div>
-                                        <div id="services-40" class="component lazy-load-placeholder" category="Nutritionist"></div>
-                                        <div id="services-41" class="component lazy-load-placeholder" category="catering"></div>
+				<div id="services-1" class="component lazy-load-placeholder" category="Clinic"></div>
+				<div id="services-2" class="component lazy-load-placeholder" category="Clinic"></div>
+				<div id="services-3" class="component lazy-load-placeholder" category="Clinic"></div>
+				<div id="services-4" class="component lazy-load-placeholder" category="Hotel/Lounges"></div>
+				<div id="services-5" class="component lazy-load-placeholder" category="Chartered Accountant"></div>
+				<div id="services-6" class="component lazy-load-placeholder" category="Chartered Accountant"></div>
+				<div id="services-7" class="component lazy-load-placeholder" category="Financial Advisors"></div>
+				<div id="services-8" class="component lazy-load-placeholder" category="Music Coach"></div>
+				<div id="services-9" class="component lazy-load-placeholder" category="Company Secretary"></div>
+				<div id="services-10" class="component lazy-load-placeholder" category="Company Secretary"></div>
+				<div id="services-11" class="component lazy-load-placeholder" category="Photography"></div>
+				<!-- <div id="services-12" class="component lazy-load-placeholder" category="Artist/Illustrator"></div> -->
+				<div id="services-13" class="component lazy-load-placeholder" category="Nutritionist"></div>
+				<div id="services-14" class="component lazy-load-placeholder" category="Cafes & Bakeries"></div>
+				<div id="services-15" class="component lazy-load-placeholder" category="Catering Services"></div>
+				<div id="services-16" class="component lazy-load-placeholder" category="Restaurants"></div>
+				<div id="services-17" class="component lazy-load-placeholder" category="Clinic"></div>
+				<div id="services-18" class="component lazy-load-placeholder" category="Coaching center"></div>
+				<div id="services-19" class="component lazy-load-placeholder" category="Advocate "></div>
+				<div id="services-20" class="component lazy-load-placeholder" category="Clinic"></div>
+				<div id="services-21" class="component lazy-load-placeholder" category="Portfolio"></div>
+				<div id="services-22" class="component lazy-load-placeholder" category="Tech Startups"></div>
+				<div id="services-23" class="component lazy-load-placeholder" category="Portfolio"></div>
+				<div id="services-24" class="component lazy-load-placeholder" category="Real Estate Agencies"></div>
+				<div id="services-25" class="component lazy-load-placeholder" category="Financial Advisors"></div>
+				<div id="services-26" class="component lazy-load-placeholder" category="Music Coach"></div>
 
 
-                                        <div id="blog-2" class="component lazy-load-placeholder"></div>
-                                        <div id="blog-6" class="component lazy-load-placeholder" category="Clinic"></div>
-                                        <div id="blog-7" class="component lazy-load-placeholder" category="Weddings"></div>
-                                        <div id="blog-8" class="component lazy-load-placeholder" category="Travel Agencies"></div>
-                                        <div id="blog-9" class="component lazy-load-placeholder" category="Travel Agencies"></div>
-                                        <div id="blog-10" class="component lazy-load-placeholder" category="Recipe Blogs"></div>
-                                        <div id="blog-11" class="component lazy-load-placeholder" category="Vacation Rentals"></div>
-                                        <div id="blog-12" class="component lazy-load-placeholder" category="Gym"></div>
-                                        <div id="blog-13" class="component lazy-load-placeholder" category="Nutritionist"></div>
-                                        <div id="blog-14" class="component lazy-load-placeholder" category="Coaching center"></div>
-                                        <div id="blog-15" class="component lazy-load-placeholder" category="Financial Advisors"></div>
-                                        <div id="blog-16" class="component lazy-load-placeholder" category="Travel Agencies"></div>
-                                        <div id="blog-17" class="component lazy-load-placeholder" category="Interior Designer"></div>
-                                        <div id="blog-18" class="component lazy-load-placeholder" category="Company Secretary"></div>
-                                        <div id="blog-19" class="component lazy-load-placeholder" category="Architect"></div>
-                                        <div id="blog-20" class="component lazy-load-placeholder" category="Architect"></div>
-                                        <div id="blog-21" class="component lazy-load-placeholder" category="Advocate"></div>
-                                        <div id="blog-22" class="component lazy-load-placeholder" category="Nutritionist"></div>
+				<div id="blog-2" class="component lazy-load-placeholder"></div>
+				<div id="blog-6" class="component lazy-load-placeholder" category="Clinic"></div>
+				<div id="blog-7" class="component lazy-load-placeholder" category="Weddings"></div>
+				<div id="blog-8" class="component lazy-load-placeholder" category="Travel Blogs"></div>
+				<div id="blog-9" class="component lazy-load-placeholder" category="Travel Blogs"></div>
+				<div id="blog-10" class="component lazy-load-placeholder" category="Recipe Blogs"></div>
+				<div id="blog-11" class="component lazy-load-placeholder" category="Vacation Rentals"></div>
+				<div id="blog-12" class="component lazy-load-placeholder" category="Fitness & Gym"></div>
+				<div id="blog-13" class="component lazy-load-placeholder" category="Nutritionist"></div>
+				<div id="blog-14" class="component lazy-load-placeholder" category="Coaching center"></div>
+				<div id="blog-15" class="component lazy-load-placeholder" category="Financial Advisors"></div>
 
-                                        <div id="faq-1" class="component lazy-load-placeholder"></div>
-                                        <div id="faq-2" class="component lazy-load-placeholder"></div>
-                                        <div id="faq-3" class="component lazy-load-placeholder" category="Influencer"></div>
-                                        <div id="faq-4" class="component lazy-load-placeholder" category="Home Staging"></div>
-                                        <div id="faq-5" class="component lazy-load-placeholder" category="Chartered Accountant"></div>
-                                        <div id="faq-6" class="component lazy-load-placeholder" category="Nutritionist"></div>
+				<div id="faq-1" class="component lazy-load-placeholder"></div>
+				<div id="faq-2" class="component lazy-load-placeholder"></div>
+				<div id="faq-3" class="component lazy-load-placeholder" category="Influencer"></div>
+				<div id="faq-4" class="component lazy-load-placeholder" category="Home Staging"></div>
+				<div id="faq-5" class="component lazy-load-placeholder" category="Chartered Accountant"></div>
 
-                                        <div id="newsletter-1" class="component lazy-load-placeholder"></div>
-                                        <div id="newsletter-2" class="component lazy-load-placeholder" category="Education"></div>
-                                        <div id="newsletter-3" class="component lazy-load-placeholder" category="Weddings"></div>
-                                        <div id="newsletter-4" class="component lazy-load-placeholder" category="Music Coach"></div>
-                                        <div id="newsletter-5" class="component lazy-load-placeholder" category="Coaching center"></div>
+				<div id="newsletter-1" class="component lazy-load-placeholder"></div>
+				<div id="newsletter-2" class="component lazy-load-placeholder" category="Education"></div>
+				<div id="newsletter-3" class="component lazy-load-placeholder" category="Weddings"></div>
+				<div id="newsletter-4" class="component lazy-load-placeholder" category="Music Coach"></div>
+				<div id="newsletter-5" class="component lazy-load-placeholder" category="Coaching center"></div>
 
-                                        <div id="ourteam-1" class="component lazy-load-placeholder" category="Clinic"></div>
-                                        <div id="ourteam-2" class="component lazy-load-placeholder" category="Gym"></div>
-                                        <!-- <div id="ourteam-3" class="component lazy-load-placeholder" category="Conferences & Seminars"></div> -->
-                                        <div id="ourteam-4" class="component lazy-load-placeholder" category="Chartered Accountant"></div>
-                                        <div id="ourteam-5" class="component lazy-load-placeholder" category="Makeup Artists"></div>
-                                        <div id="ourteam-6" class="component lazy-load-placeholder" category="Architect"></div>
-                                        <div id="ourteam-7" class="component lazy-load-placeholder" category="catering"></div>
+				<div id="ourteam-1" class="component lazy-load-placeholder" category="Clinic"></div>
+				<div id="ourteam-2" class="component lazy-load-placeholder" category="Fitness & Gym"></div>
+				<!-- <div id="ourteam-3" class="component lazy-load-placeholder" category="Conferences & Seminars"></div> -->
+				<div id="ourteam-4" class="component lazy-load-placeholder" category="Chartered Accountant"></div>
 
-                                        <div id="help-1" class="component lazy-load-placeholder" category="School"></div>
-                                        <div id="help-2" class="component lazy-load-placeholder" category="Coaching center"></div>
+				<div id="help-1" class="component lazy-load-placeholder" category="School"></div>
+				<div id="help-2" class="component lazy-load-placeholder" category="Coaching center"></div>
 
-                                    </div>
+			</div>
                                 <span id="back-top" class="text-center fa fa-caret-up"></span>
                             </div>
                         </div>
@@ -1599,175 +1106,189 @@ function createAndShowModal() {
     let selectedSection = "all";
 
     // Categories Data
-const categories = [
-  {
-    title: 'All',
-    icon: 'ri-grid-fill',
-    sub: []
-  },
-  {
-    title: 'Local Businesses',
-    icon: 'ri-store-line',
-    sub: ['Salon & Spa', 'Gym', 'Clinic', 'Café', 'Restaurant', 'Real Estate Agencies', 'Travel Agencies']
-  },
-  {
-    title: 'Service Provider',
-    icon: 'ri-service-line',
-    sub: ['Architect', 'Interior Designer', 'Photographer/Videographer', 'Event Planner', 'Chartered Accountant', 'Company Secretary', 'Advocate', 'Music Coach', 'Makeup Artists', 'Financial Advisors']
-  },
-  {
-    title: 'Education & Learning',
-    icon: 'ri-book-line',
-    sub: ['Coaching Center', 'Tutor', 'Pre-school & Daycare', 'School', 'College']
-  },
-  {
-    title: 'Professional Showcase',
-    icon: 'ri-user-line',
-    sub: ['Portfolio', 'Influencer', 'Blogger/Vlogger']
-  },
-  {
-    title: 'Health & Wellness',
-    icon: 'ri-heart-line',
-    sub: ['Fitness & Gym', 'Yoga & Meditation', 'Nutritionist', 'Clinic', 'Pharmacy', 'Fitness Coach']
-  },
-  {
-    title: 'Food & Hospitality',
-    icon: 'ri-restaurant-line',
-    sub: ['Restaurants', 'Cafes & Bakeries', 'Catering Services', 'Hotel/Lounges']
-  },
-  {
-    title: 'Events & Entertainment',
-    icon: 'ri-calendar-line',
-    sub: ['Event Planner', 'Event Booking Platform']
-  },
-  {
-    title: 'Nonprofit & Community',
-    icon: 'ri-hand-heart-line',
-    sub: ['Charity/NGO', 'Religious Organizations']
-  },
-  {
-    title: 'Automotive & Transportation',
-    icon: 'ri-car-line',
-    sub: ['Car Dealerships', 'Auto Repair Shops', 'Car Rentals', 'Logistics & Shipping', 'Rideshare Services']
-  },
-  {
-    title: 'Sports & Recreation',
-    icon: 'ri-football-line',
-    sub: ['Sports Clubs', 'Sporting Goods Stores', 'Game Zone']
-  },
-  {
-    title: 'Pets & Animals',
-    icon: 'ri-paw-line',
-    sub: ['Pet Store', 'Pet Grooming', 'Animal Shelters']
-  },
-  {
-    title: 'Repair & Maintenance',
-    icon: 'ri-tools-line',
-    sub: ['Fabrication', 'Plumbing', 'Civil Work', 'Electrician', 'Carpenter', 'Cleaning Service', 'Electronic Item Services']
-  }
-];
+  const categories = [
+    {
+      title: 'All',
+      icon: 'ri-grid-fill',
+      sub: []
+    },
+    {
+      title: 'Business & Corporate',
+      icon: 'ri-briefcase-line',
+      sub: ['Small Business', 'Corporate/Company Site', 'Consulting / Coaching', 'Advocate Service', 'Chartered Accountant Service', 'Company Secretary Service', 'Corporate/Enterprise', 'Real Estate', 'Construction', 'Auto Industry']
+    },
+    // {
+    //   title: 'E-commerce & Retail',
+    //   icon: 'ri-shopping-bag-line',
+    //   sub: ['Online Store', 'Fashion & Apparel', 'Electronics', 'Food & Beverage', 'Handmade/Crafts', 'Dropshipping']
+    // },
+    {
+      title: 'Portfolio & Creative',
+      icon: 'ri-palette-line',
+      sub: ['Photography', 'Graphic Design', 'Artist/Illustrator', 'Writing/Journalism', 'Music & Performing Arts', 'Videographer']
+    },
+    {
+      title: 'Personal & Blog',
+      icon: 'ri-user-line',
+      sub: ['Personal Website', 'Lifestyle Blog', 'Travel Blog', 'Food Blog', 'Tech Blog', 'Wedding Website', 'Social Media Influencer']
+    },
+    {
+      title: 'Education & Learning',
+      icon: 'ri-book-open-line',
+      sub: ['Online Courses / LMS', 'Tutoring Services', 'Pre-school & Daycare', 'School', 'Collage', 'University', 'Educational Blogs', 'Language Learning', 'Nonprofit Education', 'Coaching & Workshops']
+    },
+    {
+      title: 'Health & Wellness',
+      icon: 'ri-heart-pulse-line',
+      sub: ['Fitness & Gym', 'Yoga & Meditation', 'Medical Services', 'Mental Health', 'Nutrition & Diet', 'Doctor/Clinic', 'Therapist/Psychologist']
+    },
+    {
+      title: 'Food & Hospitality',
+      icon: 'ri-restaurant-line',
+      sub: ['Restaurants', 'Cafes & Bakeries', 'Catering Services', 'Food Delivery', 'Recipe Blogs']
+    },
+    {
+      title: 'Events & Entertainment',
+      icon: 'ri-movie-line',
+      sub: ['Weddings', 'Concerts & Festivals', 'Conferences & Seminars', 'Party Planning', 'Ticketing Platforms', 'Meetup/Workshop', 'Webinar/Livestream']
+    },
+    {
+      title: 'Nonprofit & Community',
+      icon: 'ri-community-line',
+      sub: ['Charity/NGO', 'Religious Organizations', 'Community Groups', 'Fundraising Campaigns', 'Volunteer Organizations', 'Political Campaign']
+    },
+    {
+      title: 'Real Estate & Property',
+      icon: 'ri-building-line',
+      sub: ['Real Estate Agencies', 'Property Listings', 'Vacation Rentals', 'Home Staging', 'Architecture & Design']
+    },
+    {
+      title: 'Technology & SaaS',
+      icon: 'ri-macbook-line',
+      sub: ['Software Companies', 'Tech Startups', 'App Landing Pages', 'IT Services', 'Cybersecurity']
+    },
+    {
+      title: 'Travel & Tourism',
+      icon: 'ri-map-pin-line',
+      sub: ['Travel Agencies', 'Tour Operators', 'Hotels & Resorts', 'Travel Blogs', 'Destination Guides']
+    },
+    {
+      title: 'Beauty & Fashion',
+      icon: 'ri-star-line',
+      sub: ['Salons & Spas', 'Makeup Artists', 'Fashion Brands', 'Beauty Blogs', 'Skincare Products']
+    },
+    {
+      title: 'Automotive & Transportation',
+      icon: 'ri-truck-line',
+      sub: ['Car Dealerships', 'Auto Repair Shops', 'Car Rentals', 'Logistics & Shipping', 'Rideshare Services']
+    },
+    {
+      title: 'Sports & Recreation',
+      icon: 'ri-football-line',
+      sub: ['Sports Clubs', 'Outdoor Adventures', 'Sporting Goods Stores', 'Fitness Coaching', 'Esports & Gaming']
+    },
+    {
+      title: 'Pets & Animals',
+      icon: 'ri-emotion-happy-line',
+      sub: ['Pet Stores', 'Veterinary Clinics', 'Pet Grooming', 'Animal Shelters', 'Pet Blogs']
+    },
+    {
+      title: 'Finance & Insurance',
+      icon: 'ri-bank-line',
+      sub: ['Financial Advisors', 'Insurance Agencies', 'Investment Firms', 'Accounting Services', 'Cryptocurrency Platforms']
+    },
+    {
+      title: 'Government & Public Services',
+      icon: 'ri-government-line',
+      sub: ['City/County Websites', 'Public Libraries', 'Emergency Services', 'Community Centers', 'Public Transit']
+    },
+    {
+      title: 'Creative & Media',
+      icon: 'ri-mic-line',
+      sub: ['Musician/Band', 'DJ', 'Filmmaker', 'Podcast', 'Art Gallery']
+    },
+    {
+      title: 'Repair & Maintenance',
+      icon: 'ri-tools-line',
+      sub: ['Fabrication', 'Plumbing', 'Civil Work', 'Electrician', 'Carpentar', 'Cleaning Service', 'Electronic Item Services']
+    }
+  ];
 
+    const $menu = $('#categoryDropdownMenu');
+    categories.forEach((cat, index) => {
+        const hasSub = cat.sub.length > 0;
+        const collapseId = `collapse-${index}`;
 
-// Add section main category filter
-const $menu = $('#categoryDropdownMenu');
-categories.forEach((cat, index) => {
-    const hasSub = cat.sub.length > 0;
-    const collapseId = `collapse-${index}`;
+        const mainItem = document.createElement('li');
+        mainItem.className = 'dropdown-item';
+        mainItem.setAttribute('data-collapse', hasSub ? collapseId : '');
 
-    const mainItem = $('<li class="dropdown-item category-parent"></li>');
+        if (hasSub) {
+            const itemContent = document.createElement('div');
+            itemContent.innerHTML = `<i class="${cat.icon}" style="margin-right:10px;"></i>${cat.title}`;
 
-    if (hasSub) {
-        mainItem.attr('data-collapse', collapseId);
+            const arrow = document.createElement('i');
+            arrow.className = 'ri-arrow-right-s-line';
 
-        mainItem.html(`
-            <div class="category-title">
-                <span>
-                    <i class="${cat.icon}" style="margin-right:10px;"></i>${cat.title}
-                </span>
-                <i class="ri-arrow-right-s-line category-arrow"></i>
-            </div>
-        `);
+            mainItem.appendChild(itemContent);
+            mainItem.appendChild(arrow);
+            $menu.append(mainItem);
 
-        const subList = $(`<ul class="category-sub" id="${collapseId}"></ul>`).hide();
+            const subList = document.createElement('ul');
+            subList.id = collapseId;
+            subList.style.display = 'none';
 
-        cat.sub.forEach(sub => {
-            subList.append(`
-                <li>
-                    <a href="#" data-value="${sub}">${sub}</a>
-                </li>
-            `);
-        });
+            cat.sub.forEach(sub => {
+                const subItem = document.createElement('li');
+                subItem.innerHTML = `<a href="#" data-value="${sub}">${sub}</a>`;
+                subList.appendChild(subItem);
+            });
 
-        $menu.append(mainItem);
-        $menu.append(subList);
-    } else {
-        $menu.append(`
-            <li>
+            $menu.append(subList);
+        } else {
+            mainItem.innerHTML = `
                 <a href="#" data-value="${cat.title}" class="all-main-category">
                     <i class="${cat.icon}" style="margin-right:10px;"></i>${cat.title}
-                </a>
-            </li>
-        `);
+                </a>`;
+            $menu.append(mainItem);
+        }
+    });
+
+    // Category Dropdown Behavior
+    $(document).on('click', '#categoryDropdownMenu .dropdown-item', function (e) {
+        const collapseId = $(this).data('collapse');
+        if (collapseId) {
+            e.stopPropagation();
+            $('#categoryDropdownMenu ul').not('#' + collapseId).slideUp(200);
+            $('.dropdown-item .ri-arrow-right-s-line').not($(this).find('.ri-arrow-right-s-line')).removeClass('rotate');
+            $('#' + collapseId).slideToggle(200);
+            $(this).find('.ri-arrow-right-s-line').toggleClass('rotate');
+        }
+    });
+
+$(document).on('click', '#categoryDropdownMenu > li', function (e) {
+    const $link = $(this).find('a.all-main-category');
+    if ($link.length) {
+        e.preventDefault();
+        const text = $link.text().trim();
+        const iconClass = $link.find('i').attr('class');
+        $('#categoryDropdownButton').html(`<span class="selected-category"><i class="${iconClass}" style="margin-right:10px;"></i>${text}</span> <span class="caret"></span>`);
+        selectedCategory = text;
+        filterComponents();
     }
 });
 
-$(document).on('click', '.category-parent', function (e) {
-    e.stopPropagation();
+    $(document).on('click', '#categoryDropdownMenu ul li a[data-value]', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const text = $(this).text().trim();
+        const iconClass = $(this).closest('ul').prev('.dropdown-item').find('i').first().attr('class');
+        $('#categoryDropdownButton').html(`<span class="selected-category"><i class="${iconClass}" style="margin-right:10px;"></i>${text}</span> <span class="caret"></span>`);
+        selectedCategory = text;
+        filterComponents();
+    });
 
-    const collapseId = $(this).data('collapse');
-    const $sub = $('#' + collapseId);
-    const $arrow = $(this).find('.category-arrow');
-
-    // Close others
-    $('.category-sub').not($sub).slideUp(200);
-    $('.category-arrow').not($arrow).removeClass('open');
-
-    // Toggle current
-    $sub.slideToggle(200);
-    $arrow.toggleClass('open');
-});
-$(document).on('click', '.all-main-category', function (e) {
-    e.preventDefault();
-
-    const text = $(this).text().trim();
-    const iconClass = $(this).find('i').attr('class');
-
-    $('#categoryDropdownButton').html(`
-        <span class="selected-category">
-            <i class="${iconClass}" style="margin-right:10px;"></i>${text}
-        </span>
-        <span class="caret"></span>
-    `);
-
-    selectedCategory = text;
-    filterComponents();
-});
-$(document).on('click', '.category-sub a', function (e) {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const text = $(this).text().trim();
-    const iconClass = $(this)
-        .closest('.category-sub')
-        .prev('.category-parent')
-        .find('i')
-        .first()
-        .attr('class');
-
-    $('#categoryDropdownButton').html(`
-        <span class="selected-category">
-            <i class="${iconClass}" style="margin-right:10px;"></i>${text}
-        </span>
-        <span class="caret"></span>
-    `);
-
-    selectedCategory = text;
-    filterComponents();
-});
-
-
-
-    // Section Filter
+    // Section Filter Behavior
     $(document).on('click', '#section-filter a', function (e) {
         e.preventDefault();
         selectedSection = $(this).data('value');
@@ -2000,8 +1521,6 @@ function generateUniqueId() {
 }
 
 });
-
-
 
 
 
