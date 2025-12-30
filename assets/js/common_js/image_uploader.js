@@ -40,7 +40,9 @@ function extractRepoPath(imgSrc) {
 
 $(document).on('click', '.updateImg', function () {
   alert('update image click');
-    if (localStorage.getItem("featureEnabled")==="load buttons"){
+    if(!token){
+      return
+    }
         let imgName = "default";
         if ($(this).attr("src")) {
             imgName = $(this).attr("src");
@@ -56,10 +58,6 @@ $(document).on('click', '.updateImg', function () {
         $(".formFieldFileName").val(imgName);
         $("#image-upload").data('imageElement', this);
         $("#image-upload").click();
-    }
-    else{
-        return
-    }
         
 });
   
