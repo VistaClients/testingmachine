@@ -54,6 +54,7 @@ function extractRepoPath(src) {
 
 // ================= CLICK HANDLER =================
 $(document).on("click", ".updateImg", function () {
+  alert('changes');
   // if (localStorage.getItem("featureEnabled") !== "load buttons") return;
 
   let imgSrc = "";
