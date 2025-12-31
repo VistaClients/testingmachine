@@ -1,149 +1,105 @@
 $(document).ready(function () {
-    // Initialization
-    var wrapper = $('#wrapper').addClass('editableSection');
 
-    // Add top bar
-    var topBar = $('<div>', { id: 'top-bar', class: 'top-bar' }).insertBefore(wrapper);
-
-    // Add image upload form
+    // ---------------- INIT ----------------
     $('<form method="post" id="imgForm" enctype="multipart/form-data">').appendTo('body');
-    $('<input type="file" name="imgFile" id="image-upload" class="hidden" accept="image/*">').appendTo('#imgForm');
-    $('<input type="text" class="hidden formFieldFileName" name="imgFileName" value="">').appendTo('#imgForm');
-    $('<input type="text" class="hidden selectedPageName" name="selectedPageName" value="">').appendTo('body');
+    $('<input type="file" id="image-upload" class="hidden" accept="image/*">').appendTo('#imgForm');
+    $('<input type="text" class="hidden formFieldFileName">').appendTo('#imgForm');
 
-    // GitHub info from localStorage
     const token = localStorage.getItem('feature_key');
     const repoOwner = localStorage.getItem('owner');
     const repoName = localStorage.getItem('repo_name');
     const branch = "main";
 
-    // Convert file to base64
+    // ---------------- UTILS ----------------
     function toBase64(file) {
         return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = () => resolve(reader.result);
-            reader.onerror = reject;
+            const r = new FileReader();
+            r.readAsDataURL(file);
+            r.onload = () => resolve(r.result);
+            r.onerror = reject;
         });
     }
 
-    // Get latest SHA for a file in GitHub
     async function getLatestSha(filePath) {
         try {
-            const res = await fetch(
+            const r = await fetch(
                 `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${filePath}?ref=${branch}`,
-                {
-                    headers: { 
-                        Authorization: `token ${token}`, 
-                        Accept: "application/vnd.github+json" 
-                    }
-                }
+                { headers: { Authorization: `token ${token}` } }
             );
-            if (res.ok) return (await res.json()).sha;
-        } catch {
-            console.warn("Could not fetch latest SHA for", filePath);
-        }
+            if (r.ok) return (await r.json()).sha;
+        } catch { }
         return null;
     }
 
-    // Extract GitHub repo path from image src
-    function extractRepoPath(imgSrc) {
-        return imgSrc
-            .replace(/^https?:\/\/[^/]+\//, '')    // remove domain
-            .replace(/^testing\//, '')             // remove "testing/" prefix
-            .replace(/^\/+/, '')                   // remove leading slashes
-            .replace(/^.*?(assets\/)/, 'assets/'); // trim everything before "assets/"
+    function extractRepoPath(originalSrc) {
+        return originalSrc.replace(/^\/+/, '');
     }
 
-    // Click event for updating image
+    // ---------------- OPEN FILE PICKER ----------------
     $(document).on('click', '.updateImg', function () {
-        if (localStorage.getItem("featureEnabled") === "load buttons") {
-            let imgName = "default";
 
-            if ($(this).attr("src")) {
-                imgName = $(this).attr("src");
-            } else {
-                const bgImg = $(this).css('background-image');
-                if (bgImg && bgImg.includes('url(')) {
-                    imgName = bgImg.replace(/^url\(["']?/, '').replace(/["']?\)$/, '');
-                }
-            }
+        if (localStorage.getItem("featureEnabled") !== "load buttons") return;
 
-            if (imgName.includes("?")) imgName = imgName.split("?")[0];
-
-            $(".formFieldFileName").val(imgName);
-            $("#image-upload").data('imageElement', this);
-            $("#image-upload").click();
-        } else {
+        const originalSrc = $(this).attr("data-original-src");
+        if (!originalSrc) {
+            alert("data-original-src missing on element!");
             return;
         }
+
+        $(".formFieldFileName").val(originalSrc);
+        $("#image-upload").data("imageElement", this);
+        $("#image-upload").click();
     });
 
-    // Trigger upload when file selected
-    $("#image-upload").on('change', function () {
-        uploadImgData();
-    });
+    // ---------------- HANDLE FILE SELECTION ----------------
+    $("#image-upload").on("change", uploadImgData);
 
-    // Upload image to GitHub
     async function uploadImgData() {
-        const fileInput = $("#image-upload")[0];
-        const file = fileInput.files[0];
-        if (!file) return alert("No file selected!");
 
-        const imgName = $(".formFieldFileName").val();
+        const file = $("#image-upload")[0].files[0];
+        if (!file) return;
+
+        const originalSrc = $(".formFieldFileName").val();
         const element = $("#image-upload").data("imageElement");
 
-        // Convert to base64
         const base64 = await toBase64(file);
-        const repoImagePath = extractRepoPath(imgName);
+        const repoPath = extractRepoPath(originalSrc);
+        const sha = await getLatestSha(repoPath);
 
-        if (!repoImagePath) {
-            alert("Unable to determine GitHub path for image!");
-            return;
-        }
-
-        // Get latest SHA from GitHub
-        const sha = await getLatestSha(repoImagePath);
-        const commitMessage = `Update ${repoImagePath} via web editor`;
-
-        // Upload to GitHub
-        const response = await fetch(
-            `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${repoImagePath}`,
+        const res = await fetch(
+            `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${repoPath}`,
             {
                 method: "PUT",
                 headers: {
                     Authorization: `token ${token}`,
                     Accept: "application/vnd.github+json",
-                    "Content-Type": "application/json",
+                    "Content-Type": "application/json"
                 },
                 body: JSON.stringify({
-                    message: commitMessage,
+                    message: `Update ${repoPath} via CMS`,
                     content: base64.split(",")[1],
                     sha: sha,
-                    branch: branch,
-                }),
+                    branch: branch
+                })
             }
         );
 
-        const result = await response.json();
+        const result = await res.json();
 
-        if (result.content && result.commit) {
-            console.log("GitHub image updated:", repoImagePath);
-
-            // Update image on page with cache-busting
-            const newSrc = `${imgName}?${Date.now()}`;
-            if (element.tagName === "IMG") {
-                $(element).attr("src", newSrc);
-            } else {
-                $(element).css("background-image", `url(${newSrc})`);
-            }
-
-            alert("Image updated on GitHub!");
-        } else {
+        if (!result.content) {
             alert("Upload failed: " + (result.message || "Unknown error"));
+            return;
         }
 
-        // Reset file input
-        fileInput.value = "";
+        const newSrc = `${originalSrc}?v=${Date.now()}`;
+
+        if (element.tagName === "IMG") {
+            $(element).attr("src", newSrc);
+        } else {
+            $(element).css("background-image", `url("${newSrc}")`);
+        }
+
+        $("#image-upload")[0].value = "";
+        alert("Image updated successfully!");
     }
 });
